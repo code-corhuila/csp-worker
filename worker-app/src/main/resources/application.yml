@@ -8,11 +8,11 @@ server:
 
 worker:
   expire-holds:
-    interval-seconds: 60
+    interval-seconds: ${EXPIRE_EVERY:60}
 
 booking:
   api:
-    url: http://booking-api:8080
+    url: ${BOOKING_API_URL:http://booking-api:8083/api/v1/booking}
     timeout-seconds: 10
 
 logging:
