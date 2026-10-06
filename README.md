@@ -1,25 +1,26 @@
 # csp-worker
 
-> Asynchronous jobs and background processing
+Scheduled background jobs for the CineSync Platform (Norma 4.3). The worker runs jobs that no one
+asks for: expiration sweeps, notifications, reindexation. It exposes no business interface, only
+a health endpoint (Norma 5.7.1).
 
-Part of the **LMS Library** distributed system — team `lms-library`, Grupo 2.
-Governance and documentation live in [`library-docs`](https://github.com/code-corhuila/library-docs).
+## Jobs
 
-## Branching
+| Job | Schedule | Description |
+|---|---|---|
+| `expire-holds` | Every 60s | Calls `POST /internal/maintenance/expire-holds` on the booking service to expire HELD reservations past their hold time (HU-BOOKING-002) |
 
-Three permanent branches. **None of them accepts a direct commit** — you enter through a child
-branch and leave through a Pull Request.
+## Configuration
 
+| Variable | Description | Default |
+|---|---|---|
+| `SERVICE_TOKEN` | Service token issued by the identity service | (required) |
+| `BOOKING_API_URL` | Booking service internal URL | `http://booking-api:8080` |
+| `EXPIRE_EVERY` | Scheduler interval in seconds | `60` |
+
+## Build and run
+
+```bash
+mvn clean package
+java -jar worker-app/target/worker-app-0.1.0.jar
 ```
-develop  <--PR--  feat/... fix/... chore/...
-qa       <--PR--  qa/...
-main     <--PR--  release/...  hotfix/...
-```
-
-Promotion happens **by re-application** (`git cherry-pick -x`), never by merging one permanent
-branch into another: `merge develop -> qa` and `merge qa -> main` do not exist in this model.
-
-`main` requires **1 approval from `ariel5253`**. On `develop` and `qa` the team sets its own review
-rule.
-
-Full policy: `00-governance/branching-policy.md` in `library-docs`.
