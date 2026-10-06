@@ -11,7 +11,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 /**
- * The scheduler of the worker: runs each job on a fixed schedule. Each run is acotada (Norma 5.7):
+ * The scheduler of the worker: runs each job on a fixed schedule. Each run is bounded (Norma 5.7):
  * the job itself limits its batch size and the scheduler runs one at a time.
  */
 @Component

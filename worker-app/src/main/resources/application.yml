@@ -8,7 +8,7 @@ server:
 
 worker:
   expire-holds:
-    interval-seconds: 60
+    interval-seconds: ${EXPIRE_EVERY:60}
 
 booking:
   api:

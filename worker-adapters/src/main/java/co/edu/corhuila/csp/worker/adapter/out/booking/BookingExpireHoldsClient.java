@@ -32,6 +32,10 @@ public class BookingExpireHoldsClient implements BookingExpireHoldsApi {
             @Value("${booking.api.url:http://booking-api:8080}") String bookingApiUrl,
             @Value("${SERVICE_TOKEN:}") String serviceToken,
             @Value("${booking.api.timeout-seconds:10}") long timeoutSeconds) {
+        if (serviceToken == null || serviceToken.isBlank()) {
+            // Failing at boot is cheaper than a sweep that answers 401 every minute unnoticed.
+            throw new IllegalStateException("SERVICE_TOKEN is required: the booking service rejects an unauthenticated sweep");
+        }
         this.bookingApiUrl = bookingApiUrl;
         this.serviceToken = serviceToken;
         this.timeout = Duration.ofSeconds(timeoutSeconds);

@@ -10,7 +10,10 @@ import org.springframework.context.event.EventListener;
  * The csp-worker application: runs scheduled background jobs (Norma 4.3). It exposes no business
  * interface, only a health endpoint (Norma 5.7.1).
  */
-@SpringBootApplication
+// The adapters live beside the application, not under it: both are scanned on purpose.
+@SpringBootApplication(scanBasePackages = {
+        "co.edu.corhuila.csp.worker.app",
+        "co.edu.corhuila.csp.worker.adapter"})
 public class WorkerApplication {
 
     private final JobRunner jobRunner;
