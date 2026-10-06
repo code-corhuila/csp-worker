@@ -14,8 +14,9 @@ a health endpoint (Norma 5.7.1).
 
 | Variable | Description | Default |
 |---|---|---|
-| `SERVICE_TOKEN` | Service token issued by the identity service | (required) |
-| `BOOKING_API_URL` | Booking service internal URL | `http://booking-api:8080` |
+| `SERVICE_TOKEN` | Service token issued by the identity service; fixed for the life of the process | one of the two is required |
+| `SERVICE_TOKEN_FILE` | File holding the token, read again at every sweep so the secret can be rotated without a restart | one of the two is required |
+| `BOOKING_API_URL` | Booking service internal URL | `http://booking-api:8083/api/v1/booking` |
 | `EXPIRE_EVERY` | Scheduler interval in seconds | `60` |
 
 ## Build and run
