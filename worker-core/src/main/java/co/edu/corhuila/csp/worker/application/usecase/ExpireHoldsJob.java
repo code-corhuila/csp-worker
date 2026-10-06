@@ -11,6 +11,11 @@ import org.slf4j.LoggerFactory;
  * The expiration sweep of HU-BOOKING-002: calls the booking service to expire HELD reservations
  * past their hold time. Each run carries its own correlation id so the sweep is traceable across
  * the whole system (Norma 5.7.3).
+ *
+ * <p>Safe to run twice (Norma 5.7, rule 1): the guarantee belongs to the booking service, whose
+ * expiration keeps a {@code status = 'HELD'} guard, so overlapping sweeps, a retried call or a
+ * second replica of this worker expire a hold at most once. This job relies on it and does not
+ * coordinate between replicas.
  */
 public class ExpireHoldsJob implements Job {
 

@@ -1,6 +1,7 @@
 package co.edu.corhuila.csp.worker.adapter.in.scheduler;
 
 import co.edu.corhuila.csp.worker.application.port.in.Job;
+import jakarta.annotation.PreDestroy;
 import java.util.List;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -56,8 +57,10 @@ public class JobRunner {
     }
 
     /**
-     * Shuts down the scheduler gracefully.
+     * Stops the scheduler when the application stops: a sweep in flight is given time to finish
+     * instead of being abandoned in the middle of its HTTP call.
      */
+    @PreDestroy
     public void shutdown() {
         executor.shutdown();
         try {
