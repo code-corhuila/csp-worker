@@ -20,3 +20,12 @@ jobs:
       - name: The jar is executable
         run: |
           unzip -p worker-app/target/worker-app-0.1.0.jar META-INF/MANIFEST.MF | grep -q '^Main-Class: org.springframework.boot.loader'
+      # The image is what csp-infra composes: build it and start it. Without a token the worker must stop
+      # with its own message, which proves the jar boots as the unprivileged user and reaches our code.
+      - name: The image builds and starts
+        run: |
+          docker build -f deploy/Dockerfile -t csp-worker:ci .
+          if docker run --rm csp-worker:ci > worker.log 2>&1; then
+            echo "the worker started without a token"; exit 1
+          fi
+          grep -q 'SERVICE_TOKEN or SERVICE_TOKEN_FILE is required' worker.log || { cat worker.log; exit 1; }
