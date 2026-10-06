@@ -18,4 +18,5 @@ jobs:
       # The jar of worker-app must start on its own: without the repackaging it has no main class and
       # the container cannot run, and nothing else would fail.
       - name: The jar is executable
-        run: unzip -p worker-app/target/worker-app-0.1.0.jar META-INF/MANIFEST.MF | grep -q '^Main-Class: org.springframework.boot.loader'
+        run: |
+          unzip -p worker-app/target/worker-app-0.1.0.jar META-INF/MANIFEST.MF | grep -q '^Main-Class: org.springframework.boot.loader'
