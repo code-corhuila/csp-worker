@@ -1,0 +1,20 @@
+spring:
+  application:
+    name: csp-worker
+
+server:
+  port: 8080
+  shutdown: graceful
+
+worker:
+  expire-holds:
+    interval-seconds: 60
+
+booking:
+  api:
+    url: http://booking-api:8080
+    timeout-seconds: 10
+
+logging:
+  level:
+    co.edu.corhuila.csp.worker: INFO
