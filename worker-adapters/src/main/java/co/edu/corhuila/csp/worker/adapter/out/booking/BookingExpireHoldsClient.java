@@ -34,7 +34,7 @@ public class BookingExpireHoldsClient implements BookingExpireHoldsApi {
     private final HttpClient httpClient;
     private final ObjectMapper json = new ObjectMapper();
     private final String operationUrl;
-    private final String serviceToken;
+    private final ServiceTokenSource serviceToken;
     private final Duration timeout;
 
     /**
@@ -43,13 +43,8 @@ public class BookingExpireHoldsClient implements BookingExpireHoldsApi {
      */
     public BookingExpireHoldsClient(
             @Value("${booking.api.url:http://booking-api:8083/api/v1/booking}") String bookingApiUrl,
-            @Value("${SERVICE_TOKEN:}") String serviceToken,
+            ServiceTokenSource serviceToken,
             @Value("${booking.api.timeout-seconds:10}") long timeoutSeconds) {
-        if (serviceToken == null || serviceToken.isBlank()) {
-            // Failing at boot is cheaper than a sweep that answers 401 every minute unnoticed.
-            throw new IllegalStateException(
-                    "SERVICE_TOKEN is required: the booking service rejects an unauthenticated sweep");
-        }
         this.operationUrl = bookingApiUrl.replaceAll("/+$", "") + OPERATION;
         this.serviceToken = serviceToken;
         this.timeout = Duration.ofSeconds(timeoutSeconds);
@@ -58,9 +53,10 @@ public class BookingExpireHoldsClient implements BookingExpireHoldsApi {
 
     @Override
     public ExpireHoldsResult expireHolds(String correlationId) {
+        // The token is read now, not at startup: it has a lifetime and the platform may rotate it.
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(operationUrl))
-                .header("Authorization", "Bearer " + serviceToken)
+                .header("Authorization", "Bearer " + serviceToken.current())
                 .header("X-Correlation-Id", correlationId)
                 .timeout(timeout)
                 .POST(HttpRequest.BodyPublishers.noBody())
@@ -87,6 +83,10 @@ public class BookingExpireHoldsClient implements BookingExpireHoldsApi {
             if ((status == 429 || status >= 500) && attempt < MAX_ATTEMPTS) {
                 backOff(attempt, "status " + status);
                 continue;
+            }
+            if (status == 401 || status == 403) {
+                log.error("the booking service refused the service token (status {}): it may have expired or its"
+                        + " subject is not allowed; replace the secret of the worker", status);
             }
             throw new IllegalStateException("the booking service answered " + status);
         }

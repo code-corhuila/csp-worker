@@ -3,7 +3,7 @@ package co.edu.corhuila.csp.worker.app;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
-import co.edu.corhuila.csp.worker.adapter.out.booking.BookingExpireHoldsClient;
+import co.edu.corhuila.csp.worker.adapter.out.booking.ServiceTokenSource;
 import co.edu.corhuila.csp.worker.application.port.in.Job;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -32,6 +32,6 @@ class WorkerWiringTest {
     @Test
     void aMissingServiceTokenStopsTheWorkerAtStartup() {
         assertThrows(IllegalStateException.class,
-                () -> new BookingExpireHoldsClient("http://booking-api:8080", " ", 10));
+                () -> new ServiceTokenSource(" ", ""));
     }
 }

@@ -8,6 +8,8 @@ import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import org.junit.jupiter.api.AfterEach;
@@ -84,8 +86,33 @@ class BookingExpireHoldsClientTest {
         assertEquals(3, paths.size());
     }
 
+    @Test
+    void aRotatedTokenFileIsPickedUpWithoutRestartingTheWorker() throws IOException {
+        Path file = Files.createTempFile("service-token", ".txt");
+        try {
+            Files.writeString(file, "first-token\n");
+            BookingExpireHoldsClient client = new BookingExpireHoldsClient(
+                    "http://127.0.0.1:" + server.getAddress().getPort() + CONTEXT,
+                    new ServiceTokenSource("", file.toString()), 5);
+
+            client.expireHolds("run-5");
+            Files.writeString(file, "second-token\n");
+            client.expireHolds("run-6");
+
+            assertEquals(List.of("Bearer first-token", "Bearer second-token"), authorizations);
+        } finally {
+            Files.deleteIfExists(file);
+        }
+    }
+
+    @Test
+    void theWorkerRefusesToStartWithoutAnyToken() {
+        assertThrows(IllegalStateException.class, () -> new ServiceTokenSource(" ", ""));
+        assertThrows(IllegalStateException.class, () -> new ServiceTokenSource("", "/missing/token"));
+    }
+
     private BookingExpireHoldsClient client() {
         return new BookingExpireHoldsClient("http://127.0.0.1:" + server.getAddress().getPort() + CONTEXT + "/",
-                "service-token", 5);
+                new ServiceTokenSource("service-token", ""), 5);
     }
 }
