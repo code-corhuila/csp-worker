@@ -1,0 +1,17 @@
+services:
+  worker:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    environment:
+      SERVICE_TOKEN: ${SERVICE_TOKEN}
+      BOOKING_API_URL: ${BOOKING_API_URL:-http://booking-api:8080}
+      EXPIRE_EVERY: ${EXPIRE_EVERY:-60}
+    networks:
+      - platform
+    restart: unless-stopped
+
+networks:
+  platform:
+    name: platform
+    external: true

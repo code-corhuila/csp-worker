@@ -1,0 +1,5 @@
+target/
+*.class
+*.log
+.env
+!.env.example
