@@ -1,8 +1,11 @@
+# This service only. csp-infra includes this file to compose the platform.
+name: csp-worker
+
 services:
   worker:
     build:
       context: ..
-      dockerfile: Dockerfile
+      dockerfile: deploy/Dockerfile
     environment:
       SERVICE_TOKEN: ${SERVICE_TOKEN:-}
       SERVICE_TOKEN_FILE: ${SERVICE_TOKEN_FILE:-}
