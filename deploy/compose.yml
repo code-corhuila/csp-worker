@@ -11,9 +11,36 @@ services:
       SERVICE_TOKEN_FILE: ${SERVICE_TOKEN_FILE:-}
       BOOKING_API_URL: ${BOOKING_API_URL:-http://booking-api:8083/api/v1/booking}
       EXPIRE_EVERY: ${EXPIRE_EVERY:-60}
+      # The outbox relay of booking (ADR-014) stays off until the platform has a RabbitMQ broker to point it at.
+      OUTBOX_RELAY_ENABLED: ${OUTBOX_RELAY_ENABLED:-false}
+      OUTBOX_RELAY_EVERY: ${OUTBOX_RELAY_EVERY:-5}
+      RELAY_DATABASE_URL: jdbc:postgresql://postgres:5432/${PG_DATABASE:-csp}
+      RELAY_DATABASE_USER: worker_app
+      RELAY_DATABASE_PASSWORD: ${WORKER_APP_PASSWORD:-}
+      RELAY_AMQP_URL: ${RELAY_AMQP_URL:-}
+      RELAY_AMQP_EXCHANGE: ${RELAY_AMQP_EXCHANGE:-cine.events}
     networks:
       - platform
     restart: unless-stopped
+
+  # Creates schema worker, where the relay keeps its publication state (ADR-014). No -db repository owns that
+  # schema, so its migration lives in db/. It runs as the instance administrator, never as worker_app, and
+  # before the relay is enabled: docker compose --profile tooling run --rm worker-db-migrate
+  worker-db-migrate:
+    image: flyway/flyway:11.20
+    profiles: [tooling]
+    volumes:
+      - ../db:/migrations:ro
+    environment:
+      FLYWAY_URL: jdbc:postgresql://postgres:5432/${PG_DATABASE:?set PG_DATABASE}
+      FLYWAY_USER: ${PG_ADMIN_USER:?set PG_ADMIN_USER}
+      FLYWAY_PASSWORD: ${PG_ADMIN_PASSWORD:?set PG_ADMIN_PASSWORD}
+      FLYWAY_LOCATIONS: filesystem:/migrations
+      FLYWAY_SCHEMAS: worker
+      FLYWAY_DEFAULT_SCHEMA: worker
+      FLYWAY_CREATE_SCHEMAS: "true"
+    command: ["migrate"]
+    networks: [platform]
 
 networks:
   platform:

@@ -3,8 +3,9 @@ package co.edu.corhuila.csp.worker.app;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
+import co.edu.corhuila.csp.worker.adapter.in.scheduler.ScheduledJob;
 import co.edu.corhuila.csp.worker.adapter.out.booking.ServiceTokenSource;
-import co.edu.corhuila.csp.worker.application.port.in.Job;
+import java.time.Duration;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -22,11 +23,13 @@ class WorkerWiringTest {
     private ApplicationContext context;
 
     @Test
-    void theExpireHoldsJobIsRegisteredForTheScheduler() {
-        Map<String, Job> jobs = context.getBeansOfType(Job.class);
+    void theExpireHoldsJobIsTheOnlyOneRegisteredWhileTheRelayIsOff() {
+        Map<String, ScheduledJob> jobs = context.getBeansOfType(ScheduledJob.class);
 
         assertEquals(1, jobs.size());
-        assertEquals("expire-holds", jobs.values().iterator().next().name());
+        ScheduledJob scheduled = jobs.values().iterator().next();
+        assertEquals("expire-holds", scheduled.job().name());
+        assertEquals(Duration.ofHours(1), scheduled.interval());
     }
 
     @Test
