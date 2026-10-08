@@ -210,6 +210,22 @@ class RelayOutboxJobTest {
     }
 
     @Test
+    void theCursorIsNotAdvancedUntilEveryDiscoveredPageIsTracked() {
+        IntStream.range(0, 150).forEach(i -> source.add("ReservationHeld", T0.plusMillis(i)));
+        state.failTrackOnCall(2);
+
+        JobResult interrupted = job.run();
+
+        assertEquals(1, interrupted.failed());
+        assertTrue(state.cursor().isEmpty(), "a crash while tracking must not leave the cursor ahead of the events");
+        state.failTrackOnCall(-1);
+        assertEquals(100, job.run().processed());
+        clock.advance(Duration.ofSeconds(1));
+        assertEquals(50, job.run().processed());
+        assertEquals(150, publisher.deliveredIds().stream().distinct().count());
+    }
+
+    @Test
     void moreThanOneBatchInsideTheOverlapDoesNotStallTheDiscovery() {
         IntStream.range(0, 150).forEach(i -> source.add("ReservationHeld", T0.plusMillis(i)));
         while (job.run().processed() > 0) {

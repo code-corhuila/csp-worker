@@ -7,6 +7,24 @@ on:
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
+    # The tests of the outbox relay that need an engine run against the real one (Annex C):
+    # TEST_DATABASE_URL below turns them on.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: csp
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d csp"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      TEST_DATABASE_URL: jdbc:postgresql://localhost:5432/csp?user=postgres&password=postgres
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4

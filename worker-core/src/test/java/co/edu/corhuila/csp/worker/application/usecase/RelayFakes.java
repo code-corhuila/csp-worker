@@ -111,9 +111,17 @@ final class RelayFakes {
         private final Map<UUID, Row> rows = new LinkedHashMap<>();
         private OutboxPosition cursor;
         private boolean crashOnNextPublishedMark;
+        private int trackCalls;
+        private int failTrackOnCall = -1;
 
         void crashOnNextPublishedMark() {
             this.crashOnNextPublishedMark = true;
+        }
+
+        /** The database goes away on the n-th call to track, counted from now on. */
+        void failTrackOnCall(int n) {
+            this.trackCalls = 0;
+            this.failTrackOnCall = n;
         }
 
         RelayStatus statusOf(UUID id) {
@@ -148,6 +156,9 @@ final class RelayFakes {
 
         @Override
         public void track(Collection<UUID> eventIds, Instant now) {
+            if (++trackCalls == failTrackOnCall) {
+                throw new IllegalStateException("database unavailable");
+            }
             for (UUID id : eventIds) {
                 rows.putIfAbsent(id, new Row(RelayStatus.PENDING, 0, now, null, null));
             }
