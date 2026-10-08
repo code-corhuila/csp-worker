@@ -8,6 +8,7 @@ import java.time.Duration;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
+import org.springframework.boot.test.context.ConfigDataApplicationContextInitializer;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 
 /**
@@ -18,6 +19,15 @@ class OutboxRelayWiringTest {
 
     private final ApplicationContextRunner runner = new ApplicationContextRunner()
             .withUserConfiguration(OutboxRelayConfiguration.class);
+
+    @Test
+    void theExchangeIsCineEventsUnlessTheEnvironmentSaysOtherwise() {
+        // The default the platform gets is the one of application.yml: events.md does not name the exchange,
+        // so the name is pinned here until it is agreed with the consumers.
+        runner.withInitializer(new ConfigDataApplicationContextInitializer())
+                .run(context -> assertEquals("cine.events",
+                        context.getEnvironment().getProperty("worker.outbox-relay.amqp.exchange")));
+    }
 
     @Test
     void theRelayIsNotComposedByDefault() {

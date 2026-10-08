@@ -23,6 +23,16 @@ To enable it: create the schema with the migration of `db/` (`docker compose --p
 worker-db-migrate`, as the instance administrator), point `RELAY_AMQP_URL` at the broker and set
 `OUTBOX_RELAY_ENABLED=true`. Consumers deduplicate by `eventId`, the `messageId` of every message.
 
+Run the relay as a **single instance per environment**: turn the flag on in one instance only. Its scheduler never overlaps two
+runs of the same instance, but two instances would not coordinate. They could publish the same event twice, which the consumers
+absorb, and both could write the same attempt count from the same read, so an event would get a few more attempts than the
+count says; a stale read can only be lower than the real count, so it never exhausts an event early. A lock would be held
+across the call to the broker, which is worse, so no coordination is built until a decision asks for more than one relay.
+
+Before enabling it in a shared environment, the consumers must have declared their queues: a message that no queue is bound
+to is a permanent failure and waits for an operator. The name of the exchange (`cine.events`) is an assumption of this work,
+not a documented one, until the consumers confirm it.
+
 ### Light jobs and heavy jobs in one worker
 
 The worker is the home of every background process (Norma 4.3), and its jobs are not all alike:
