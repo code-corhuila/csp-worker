@@ -23,6 +23,44 @@ To enable it: create the schema with the migration of `db/` (`docker compose --p
 worker-db-migrate`, as the instance administrator), point `RELAY_AMQP_URL` at the broker and set
 `OUTBOX_RELAY_ENABLED=true`. Consumers deduplicate by `eventId`, the `messageId` of every message.
 
+### Light jobs and heavy jobs in one worker
+
+The worker is the home of every background process (Norma 4.3), and its jobs are not all alike:
+
+| | Light jobs | Heavy jobs |
+|---|---|---|
+| Examples | `expire-holds`, `outbox-relay` | rendering a PDF or QR ticket, reports, exports |
+| Trigger | A timer: a short run every few seconds or minutes | An event taken from a queue, one unit of work at a time |
+| Cost | Milliseconds, bounded by a batch (100 events, 20 s) | Seconds of CPU and memory per unit |
+| What breaks if it is late | An outbox that grows and seats that stay held | Only the one file that is waiting |
+
+They live together under three rules that the code already follows:
+
+1. **One job, one flag, one thread.** Each job is a `ScheduledJob` with its own interval and its own thread, and it exists
+   only when its flag is on (`EXPIRE_HOLDS_ENABLED`, `OUTBOX_RELAY_ENABLED`, and the one of the next job). A slow job
+   never delays the others, and an instance without the expiration sweep needs no `SERVICE_TOKEN`.
+2. **Same pattern for every job.** Ports in the core, adapters outside, a bound per run (Norma 5.7), retries with backoff
+   and an idempotent effect, so a duplicate delivery is harmless. A new job reuses this pattern; it does not invent a new one.
+3. **A job writes only its own state.** The worker never writes the schema of another domain (Annex J). It keeps its
+   state in schema `worker` and asks the owner service through an internal operation, as `expire-holds` does.
+
+The same image then runs as the instances the platform needs. Light jobs stay together because they are cheap and the
+relay must never wait; a heavy job gets its own instance, so a rendering that eats memory cannot stall the outbox:
+
+```yaml
+worker-light:            # relay and expiration: small, always on
+  image: csp-worker
+  environment: { EXPIRE_HOLDS_ENABLED: "true", OUTBOX_RELAY_ENABLED: "true" }
+worker-heavy:            # the heavy jobs: sized for rendering, scaled on its own
+  image: csp-worker
+  environment: { EXPIRE_HOLDS_ENABLED: "false", OUTBOX_RELAY_ENABLED: "false" }  # plus the flag of the heavy job
+```
+
+Today only the two light jobs exist. The ticket PDF belongs to Ticketing & Fulfillment (`BookingConfirmed` starts it),
+and it is not implemented here: if the team decides it runs in this worker, it is one more `ScheduledJob` or a queue
+consumer built on the pattern above, with its own flag, and no change to the existing jobs. The outbox relay is the piece
+that carries `BookingConfirmed` from Booking to the broker, so that flow has a way in.
+
 ## Configuration
 
 | Variable | Description | Default |
@@ -30,6 +68,7 @@ worker-db-migrate`, as the instance administrator), point `RELAY_AMQP_URL` at th
 | `SERVICE_TOKEN` | Service token issued by the identity service; fixed for the life of the process | one of the two is required |
 | `SERVICE_TOKEN_FILE` | File holding the token, read again at every sweep so the secret can be rotated without a restart | one of the two is required |
 | `BOOKING_API_URL` | Booking service internal URL | `http://booking-api:8083/api/v1/booking` |
+| `EXPIRE_HOLDS_ENABLED` | Turns the expiration sweep on; off, the instance needs no service token | `true` |
 | `EXPIRE_EVERY` | Scheduler interval in seconds of `expire-holds` | `60` |
 | `OUTBOX_RELAY_ENABLED` | Turns the outbox relay on; it then needs the database and broker variables below | `false` |
 | `OUTBOX_RELAY_EVERY` | Scheduler interval in seconds of `outbox-relay` | `5` |

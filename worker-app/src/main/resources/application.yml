@@ -14,7 +14,9 @@ server:
   shutdown: graceful
 
 worker:
+  # Every job has its own flag: the same image runs as the instances the platform needs (see the README).
   expire-holds:
+    enabled: ${EXPIRE_HOLDS_ENABLED:true}
     interval-seconds: ${EXPIRE_EVERY:60}
   # Publishes the booking outbox to RabbitMQ (ADR-014). Off until the platform has a broker.
   outbox-relay:

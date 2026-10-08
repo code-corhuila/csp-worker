@@ -10,6 +10,7 @@ services:
       SERVICE_TOKEN: ${SERVICE_TOKEN:-}
       SERVICE_TOKEN_FILE: ${SERVICE_TOKEN_FILE:-}
       BOOKING_API_URL: ${BOOKING_API_URL:-http://booking-api:8083/api/v1/booking}
+      EXPIRE_HOLDS_ENABLED: ${EXPIRE_HOLDS_ENABLED:-true}
       EXPIRE_EVERY: ${EXPIRE_EVERY:-60}
       # The outbox relay of booking (ADR-014) stays off until the platform has a RabbitMQ broker to point it at.
       OUTBOX_RELAY_ENABLED: ${OUTBOX_RELAY_ENABLED:-false}
