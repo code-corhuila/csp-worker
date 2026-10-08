@@ -5,6 +5,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 /**
@@ -15,6 +16,7 @@ import org.springframework.stereotype.Component;
  * and the worker refuses to start without a token (Norma 5.7.4).
  */
 @Component
+@ConditionalOnProperty(prefix = "worker.expire-holds", name = "enabled", havingValue = "true", matchIfMissing = true)
 public class ServiceTokenSource {
 
     private final String fixedToken;
