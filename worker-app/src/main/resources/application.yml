@@ -1,6 +1,13 @@
 spring:
   application:
     name: csp-worker
+  autoconfigure:
+    # The worker opens no database through Spring Boot: the PostgreSQL adapters of the outbox relay receive
+    # their own connection. Without this, the JDBC starter tries to build a DataSource from a URL nobody sets.
+    exclude:
+      - org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration
+      - org.springframework.boot.autoconfigure.jdbc.JdbcTemplateAutoConfiguration
+      - org.springframework.boot.autoconfigure.jdbc.DataSourceTransactionManagerAutoConfiguration
 
 server:
   port: 8080
