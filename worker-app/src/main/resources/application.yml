@@ -14,8 +14,22 @@ server:
   shutdown: graceful
 
 worker:
+  # Every job has its own flag: the same image runs as the instances the platform needs (see the README).
   expire-holds:
+    enabled: ${EXPIRE_HOLDS_ENABLED:true}
     interval-seconds: ${EXPIRE_EVERY:60}
+  # Publishes the booking outbox to RabbitMQ (ADR-014). Off until the platform has a broker.
+  outbox-relay:
+    enabled: ${OUTBOX_RELAY_ENABLED:false}
+    interval-seconds: ${OUTBOX_RELAY_EVERY:5}
+    database:
+      url: ${RELAY_DATABASE_URL:}
+      username: ${RELAY_DATABASE_USER:worker_app}
+      password: ${RELAY_DATABASE_PASSWORD:}
+    amqp:
+      url: ${RELAY_AMQP_URL:}
+      exchange: ${RELAY_AMQP_EXCHANGE:cine.events}
+      confirm-timeout-seconds: 5
 
 booking:
   api:
