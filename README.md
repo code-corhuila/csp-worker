@@ -1,8 +1,8 @@
 # csp-worker
 
 Scheduled background jobs for the CineSync Platform (Norma 4.3). The worker runs jobs that no one
-asks for: expiration sweeps, notifications, reindexation. It exposes no business interface, only
-a health endpoint (Norma 5.7.1).
+asks for: expiration sweeps, notifications, reindexation. It exposes no business interface
+(Norma 5.7.1 admits at most a health endpoint, which is not implemented yet: code-corhuila/csp-worker#18).
 
 ## Jobs
 
