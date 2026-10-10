@@ -1,0 +1,41 @@
+spring:
+  application:
+    name: csp-worker
+  autoconfigure:
+    # The worker opens no database through Spring Boot: the PostgreSQL adapters of the outbox relay receive
+    # their own connection. Without this, the JDBC starter tries to build a DataSource from a URL nobody sets.
+    exclude:
+      - org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration
+      - org.springframework.boot.autoconfigure.jdbc.JdbcTemplateAutoConfiguration
+      - org.springframework.boot.autoconfigure.jdbc.DataSourceTransactionManagerAutoConfiguration
+
+server:
+  port: 8080
+  shutdown: graceful
+
+worker:
+  # Every job has its own flag: the same image runs as the instances the platform needs (see the README).
+  expire-holds:
+    enabled: ${EXPIRE_HOLDS_ENABLED:true}
+    interval-seconds: ${EXPIRE_EVERY:60}
+  # Publishes the booking outbox to RabbitMQ (ADR-014). Off until the platform has a broker.
+  outbox-relay:
+    enabled: ${OUTBOX_RELAY_ENABLED:false}
+    interval-seconds: ${OUTBOX_RELAY_EVERY:5}
+    database:
+      url: ${RELAY_DATABASE_URL:}
+      username: ${RELAY_DATABASE_USER:worker_app}
+      password: ${RELAY_DATABASE_PASSWORD:}
+    amqp:
+      url: ${RELAY_AMQP_URL:}
+      exchange: ${RELAY_AMQP_EXCHANGE:cine.events}
+      confirm-timeout-seconds: 5
+
+booking:
+  api:
+    url: ${BOOKING_API_URL:http://booking-api:8083/api/v1/booking}
+    timeout-seconds: 10
+
+logging:
+  level:
+    co.edu.corhuila.csp.worker: INFO
