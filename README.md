@@ -9,6 +9,7 @@ asks for: expiration sweeps, notifications, reindexation. It exposes no business
 | Job | Schedule | Description |
 |---|---|---|
 | `expire-holds` | Every 60s | Calls `POST /internal/maintenance/expire-holds` on the booking service to expire HELD reservations past their hold time (HU-BOOKING-002) |
+| `purge-auth` | Every 3600s, when enabled | Calls `POST /internal/maintenance/purge` on the identity service in batches of up to 500 rows until it reports no more, or the run is out of time (60s) or calls (100) (HU-AUTH-002, [ADR-030](https://github.com/code-corhuila/csp-docs/blob/main/05-architecture/decisions/records/ADR-030-auth-retention-and-purge.md)) |
 | `outbox-relay` | Every 5s, when enabled | Publishes the events the booking API wrote to `booking.outbox_event` to RabbitMQ, with at-least-once delivery ([ADR-014](https://github.com/code-corhuila/csp-docs/blob/main/05-architecture/decisions/records/ADR-014-booking-outbox-relay-read-only.md)) |
 
 ### Outbox relay
@@ -39,16 +40,16 @@ The worker is the home of every background process (Norma 4.3), and its jobs are
 
 | | Light jobs | Heavy jobs |
 |---|---|---|
-| Examples | `expire-holds`, `outbox-relay` | rendering a PDF or QR ticket, reports, exports |
+| Examples | `expire-holds`, `purge-auth`, `outbox-relay` | rendering a PDF or QR ticket, reports, exports |
 | Trigger | A timer: a short run every few seconds or minutes | An event taken from a queue, one unit of work at a time |
-| Cost | Milliseconds, bounded by a batch (100 events, 20 s) | Seconds of CPU and memory per unit |
+| Cost | Milliseconds, bounded by a batch (100 events, 20 s; 500 rows, 60 s) | Seconds of CPU and memory per unit |
 | What breaks if it is late | An outbox that grows and seats that stay held | Only the one file that is waiting |
 
 They live together under three rules that the code already follows:
 
 1. **One job, one flag, one thread.** Each job is a `ScheduledJob` with its own interval and its own thread, and it exists
-   only when its flag is on (`EXPIRE_HOLDS_ENABLED`, `OUTBOX_RELAY_ENABLED`, and the one of the next job). A slow job
-   never delays the others, and an instance without the expiration sweep needs no `SERVICE_TOKEN`.
+   only when its flag is on (`EXPIRE_HOLDS_ENABLED`, `PURGE_AUTH_ENABLED`, `OUTBOX_RELAY_ENABLED`, and the one of the next job). A slow job
+   never delays the others, and an instance without `expire-holds` or `purge-auth` needs no `SERVICE_TOKEN`.
 2. **Same pattern for every job.** Ports in the core, adapters outside, a bound per run (Norma 5.7), retries with backoff
    and an idempotent effect, so a duplicate delivery is harmless. A new job reuses this pattern; it does not invent a new one.
 3. **A job writes only its own state.** The worker never writes the schema of another domain (Annex J). It keeps its
@@ -60,13 +61,13 @@ relay must never wait; a heavy job gets its own instance, so a rendering that ea
 ```yaml
 worker-light:            # relay and expiration: small, always on
   image: csp-worker
-  environment: { EXPIRE_HOLDS_ENABLED: "true", OUTBOX_RELAY_ENABLED: "true" }
+  environment: { EXPIRE_HOLDS_ENABLED: "true", PURGE_AUTH_ENABLED: "true", OUTBOX_RELAY_ENABLED: "true" }
 worker-heavy:            # the heavy jobs: sized for rendering, scaled on its own
   image: csp-worker
-  environment: { EXPIRE_HOLDS_ENABLED: "false", OUTBOX_RELAY_ENABLED: "false" }  # plus the flag of the heavy job
+  environment: { EXPIRE_HOLDS_ENABLED: "false", PURGE_AUTH_ENABLED: "false", OUTBOX_RELAY_ENABLED: "false" }  # plus the flag of the heavy job
 ```
 
-Today only the two light jobs exist. The ticket PDF belongs to Ticketing & Fulfillment (`BookingConfirmed` starts it),
+Today only the three light jobs exist. The ticket PDF belongs to Ticketing & Fulfillment (`BookingConfirmed` starts it),
 and it is not implemented here: if the team decides it runs in this worker, it is one more `ScheduledJob` or a queue
 consumer built on the pattern above, with its own flag, and no change to the existing jobs. The outbox relay is the piece
 that carries `BookingConfirmed` from Booking to the broker, so that flow has a way in.
@@ -75,11 +76,16 @@ that carries `BookingConfirmed` from Booking to the broker, so that flow has a w
 
 | Variable | Description | Default |
 |---|---|---|
-| `SERVICE_TOKEN` | Service token issued by the identity service; fixed for the life of the process | one of the two is required |
+| `SERVICE_TOKEN` | Service token issued by the identity service; fixed for the life of the process | one of the two is required while `expire-holds` or `purge-auth` is on |
 | `SERVICE_TOKEN_FILE` | File holding the token, read again at every sweep so the secret can be rotated without a restart | one of the two is required |
 | `BOOKING_API_URL` | Booking service internal URL | `http://booking-api:8083/api/v1/booking` |
 | `EXPIRE_HOLDS_ENABLED` | Turns the expiration sweep on; off, the instance needs no service token | `true` |
 | `EXPIRE_EVERY` | Scheduler interval in seconds of `expire-holds` | `60` |
+| `AUTH_API_URL` | Identity service internal URL | `http://auth-api:8081/api/v1/auth` |
+| `PURGE_AUTH_ENABLED` | Turns the purge of the identity service on; off, it needs no auth configuration | `false` |
+| `PURGE_EVERY` | Scheduler interval in seconds of `purge-auth` | `3600` |
+| `PURGE_BATCH_SIZE` | Rows asked per call of `purge-auth`, from 1 to 500; the worker refuses to start otherwise | `500` |
+| `PURGE_RUN_TIMEOUT` | Seconds a run of `purge-auth` may keep calling before it stops | `60` |
 | `OUTBOX_RELAY_ENABLED` | Turns the outbox relay on; it then needs the database and broker variables below | `false` |
 | `OUTBOX_RELAY_EVERY` | Scheduler interval in seconds of `outbox-relay` | `5` |
 | `RELAY_DATABASE_URL` / `RELAY_DATABASE_USER` / `RELAY_DATABASE_PASSWORD` | PostgreSQL login of the relay (`worker_app`) | user `worker_app` |
