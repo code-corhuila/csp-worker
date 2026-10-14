@@ -1,8 +1,11 @@
 package co.edu.corhuila.csp.worker.app;
 
 import co.edu.corhuila.csp.worker.adapter.in.scheduler.ScheduledJob;
+import co.edu.corhuila.csp.worker.application.port.out.AuthMaintenanceApi;
 import co.edu.corhuila.csp.worker.application.port.out.BookingExpireHoldsApi;
 import co.edu.corhuila.csp.worker.application.usecase.ExpireHoldsJob;
+import co.edu.corhuila.csp.worker.application.usecase.PurgeAuthJob;
+import java.time.Clock;
 import java.time.Duration;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -22,5 +25,16 @@ public class WorkerConfiguration {
     ScheduledJob expireHoldsJob(BookingExpireHoldsApi bookingApi,
             @Value("${worker.expire-holds.interval-seconds:60}") long intervalSeconds) {
         return new ScheduledJob(new ExpireHoldsJob(bookingApi), Duration.ofSeconds(intervalSeconds));
+    }
+
+    @Bean
+    @ConditionalOnProperty(prefix = "worker.purge-auth", name = "enabled", havingValue = "true")
+    ScheduledJob purgeAuthJob(AuthMaintenanceApi authApi,
+            @Value("${worker.purge-auth.batch-size:500}") int batchSize,
+            @Value("${worker.purge-auth.run-timeout-seconds:60}") long runTimeoutSeconds,
+            @Value("${worker.purge-auth.interval-seconds:3600}") long intervalSeconds) {
+        return new ScheduledJob(
+                new PurgeAuthJob(authApi, batchSize, Duration.ofSeconds(runTimeoutSeconds), Clock.systemUTC()),
+                Duration.ofSeconds(intervalSeconds));
     }
 }
