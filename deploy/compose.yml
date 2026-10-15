@@ -12,6 +12,11 @@ services:
       BOOKING_API_URL: ${BOOKING_API_URL:-http://booking-api:8083/api/v1/booking}
       EXPIRE_HOLDS_ENABLED: ${EXPIRE_HOLDS_ENABLED:-true}
       EXPIRE_EVERY: ${EXPIRE_EVERY:-60}
+      PURGE_AUTH_ENABLED: ${PURGE_AUTH_ENABLED:-false}
+      AUTH_API_URL: ${AUTH_API_URL:-http://auth-api:8081/api/v1/auth}
+      PURGE_EVERY: ${PURGE_EVERY:-3600}
+      PURGE_BATCH_SIZE: ${PURGE_BATCH_SIZE:-500}
+      PURGE_RUN_TIMEOUT: ${PURGE_RUN_TIMEOUT:-60}
       # The outbox relay of booking (ADR-014) stays off until the platform has a RabbitMQ broker to point it at.
       OUTBOX_RELAY_ENABLED: ${OUTBOX_RELAY_ENABLED:-false}
       OUTBOX_RELAY_EVERY: ${OUTBOX_RELAY_EVERY:-5}

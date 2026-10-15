@@ -8,6 +8,19 @@ and is tagged `v<version>` once it is merged.
 
 ## [Unreleased]
 
+## [3.0.0] - 2026-10-15
+
+### Added
+
+- `purge-auth` job (HU-AUTH-002, ADR-030): on a schedule it calls the internal purge of `csp-auth-api` in batches until the
+  service reports no more, the run is out of time or it reaches its cap of calls, with the service token. Off by default
+  (`PURGE_AUTH_ENABLED`); settings `AUTH_API_URL`, `PURGE_EVERY`, `PURGE_BATCH_SIZE` and `PURGE_RUN_TIMEOUT`.
+
+### Changed
+
+- The retry policy of the HTTP clients moved to a shared `RetryingHttp` with the same behaviour; `ServiceTokenSource`
+  exists while `expire-holds` or `purge-auth` is on.
+
 ## [2.0.0] - 2026-10-08
 
 First release. Background jobs of the Booking domain (numeral 4.3), serving the stories HU-BOOKING-001, HU-BOOKING-002 and
