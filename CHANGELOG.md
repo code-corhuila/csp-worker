@@ -8,6 +8,8 @@ and is tagged `v<version>` once it is merged.
 
 ## [Unreleased]
 
+## [3.0.0] - 2026-10-15
+
 ### Added
 
 - `purge-auth` job (HU-AUTH-002, ADR-030): on a schedule it calls the internal purge of `csp-auth-api` in batches until the
