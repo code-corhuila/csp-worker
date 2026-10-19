@@ -29,11 +29,12 @@ class RelayOutboxJobTest {
     private final RelayFakes.State state = new RelayFakes.State();
     private final RelayFakes.Validator validator = new RelayFakes.Validator();
     private final RelayFakes.Publisher publisher = new RelayFakes.Publisher(clock);
+    private final RelayFakes.Lock lock = new RelayFakes.Lock();
     private RelayOutboxJob job;
 
     @BeforeEach
     void setUp() {
-        job = new RelayOutboxJob(source, state, validator, publisher, new RetryPolicy(() -> 0.5), clock);
+        job = new RelayOutboxJob(source, state, validator, publisher, new RetryPolicy(() -> 0.5), clock, lock);
     }
 
     @Test
@@ -287,5 +288,63 @@ class RelayOutboxJobTest {
 
         UUID delivered = publisher.deliveredIds().get(0);
         assertEquals(event.id(), delivered);
+    }
+
+    @Test
+    void aRunDoesNothingWhenAnotherInstanceHoldsTheLock() {
+        source.add("ReservationHeld", T0);
+        lock.refuse();
+
+        JobResult result = job.run();
+
+        assertEquals(0, result.processed());
+        assertEquals(0, result.failed());
+        assertTrue(publisher.deliveries().isEmpty());
+        assertTrue(state.cursor().isEmpty());
+    }
+
+    @Test
+    void anInstanceThatDidNotGetTheLockPublishesOnTheNextRunThatDoes() {
+        OutboxEvent event = source.add("ReservationHeld", T0);
+        lock.refuse();
+        job.run();
+        lock.grant();
+
+        job.run();
+
+        assertEquals(List.of(event.id()), publisher.deliveredIds());
+    }
+
+    @Test
+    void theLockIsReleasedWhenTheRunEnds() {
+        source.add("ReservationHeld", T0);
+
+        job.run();
+
+        assertEquals(1, lock.acquired());
+        assertEquals(1, lock.released());
+    }
+
+    @Test
+    void theLockIsReleasedWhenTheRunFails() {
+        source.add("ReservationHeld", T0);
+        state.failTrackOnCall(1);
+
+        JobResult result = job.run();
+
+        assertEquals(1, result.failed());
+        assertEquals(1, lock.acquired());
+        assertEquals(1, lock.released());
+    }
+
+    @Test
+    void aLockThatCannotBeAskedForCountsAsAFailedRunAndPublishesNothing() {
+        source.add("ReservationHeld", T0);
+        lock.failWith(new IllegalStateException("the database is down"));
+
+        JobResult result = job.run();
+
+        assertEquals(1, result.failed());
+        assertTrue(publisher.deliveries().isEmpty());
     }
 }
