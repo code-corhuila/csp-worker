@@ -54,7 +54,9 @@ class OutboxRelayEndToEndTest {
         consumer.queueBind("relay.e2e", EXCHANGE, "cine.booking.reservation-held.v1");
         publisher = new AmqpEventPublisher(factory, EXCHANGE, Duration.ofSeconds(5));
         job = new RelayOutboxJob(new JdbcOutboxSource(jdbc), new JdbcRelayStateStore(jdbc),
-                new EnvelopeSchemaValidator(), publisher, new RetryPolicy(() -> 0.5), Clock.systemUTC());
+                new EnvelopeSchemaValidator(), publisher, new RetryPolicy(() -> 0.5), Clock.systemUTC(),
+                new JdbcAdvisoryRunLock(new org.springframework.jdbc.datasource.DriverManagerDataSource(
+                        System.getenv("TEST_DATABASE_URL"))));
     }
 
     @AfterEach
