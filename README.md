@@ -24,11 +24,12 @@ To enable it: create the schema with the migration of `db/` (`docker compose --p
 worker-db-migrate`, as the instance administrator), point `RELAY_AMQP_URL` at the broker and set
 `OUTBOX_RELAY_ENABLED=true`. Consumers deduplicate by `eventId`, the `messageId` of every message.
 
-Run the relay as a **single instance per environment**: turn the flag on in one instance only. Its scheduler never overlaps two
-runs of the same instance, but two instances would not coordinate. They could publish the same event twice, which the consumers
-absorb, and both could write the same attempt count from the same read, so an event would get a few more attempts than the
-count says; a stale read can only be lower than the real count, so it never exhausts an event early. A lock would be held
-across the call to the broker, which is worse, so no coordination is built until a decision asks for more than one relay.
+The relay runs as **one instance per environment** (ADR-014), and the worker enforces it: each run first takes a PostgreSQL
+session advisory lock on a connection of its own, and an instance that does not get it does nothing and logs one line at `DEBUG`;
+it tries again on its next run, so it takes over when the holder stops. The lock is held for the run, which is bounded (100 events,
+20 seconds, Norma 5.7), including the calls to the broker. PostgreSQL gives the lock back when the connection closes or dies, so
+a crashed instance never blocks the others. Turning the flag on in more than one instance is therefore safe, but the other
+instances are idle: do not use it to scale the relay.
 
 Before enabling it in a shared environment, the consumers must have declared their queues: a message that no queue is bound
 to is a permanent failure and waits for an operator. The name of the exchange (`cine.events`) is an assumption of this work,
