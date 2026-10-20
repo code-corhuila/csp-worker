@@ -10,6 +10,7 @@ and is tagged `v<version>` once it is merged.
 
 ### Added
 
+- `deploy/compose.yml` passes `AUTH_OUTBOX_RELAY_ENABLED` (off), `AUTH_OUTBOX_RELAY_EVERY` and `AUTH_OUTBOX_RELAY_EVENT_TYPES` with the defaults of the application (code-corhuila/csp-worker#30).
 - Outbox relay of auth (ADR-019): `auth-outbox-relay` publishes `auth.outbox_event` to `cine.events` with the same at-least-once, backoff and
   permanent-failure semantics as the booking relay, with its own state key (`source` `auth`), advisory lock and broker connection. Off by default
   (`AUTH_OUTBOX_RELAY_ENABLED`); it publishes only the event types of `AUTH_OUTBOX_RELAY_EVENT_TYPES` (`UserRegistered,UserEmailChanged` by default), so
