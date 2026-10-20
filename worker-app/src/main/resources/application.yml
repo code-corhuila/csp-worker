@@ -36,6 +36,12 @@ worker:
       url: ${RELAY_AMQP_URL:}
       exchange: ${RELAY_AMQP_EXCHANGE:cine.events}
       confirm-timeout-seconds: 5
+  # Publishes the auth outbox (ADR-019) with the login and broker above. Off until the consumers exist.
+  # Only the listed event types are published: UserRoleChanged has no consumer in the MVP.
+  auth-outbox-relay:
+    enabled: ${AUTH_OUTBOX_RELAY_ENABLED:false}
+    interval-seconds: ${AUTH_OUTBOX_RELAY_EVERY:5}
+    event-types: ${AUTH_OUTBOX_RELAY_EVENT_TYPES:UserRegistered,UserEmailChanged}
 
 booking:
   api:
