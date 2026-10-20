@@ -25,7 +25,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * The outbox relay of ADR-014: publishes the events the booking API wrote to its outbox, with
+ * The outbox relay of ADR-014 and ADR-019: publishes the events a domain API wrote to its outbox, with
  * read-only access to it and the publication state in the worker's own schema (Norma 5.3.11).
  *
  * <p>One run discovers new rows, then publishes the events that are due. Discovery re-reads the
@@ -55,9 +55,11 @@ public class RelayOutboxJob implements Job {
     private final RetryPolicy retryPolicy;
     private final Clock clock;
     private final RunLock lock;
+    private final String name;
 
-    public RelayOutboxJob(OutboxSource source, RelayStateStore state, EnvelopeValidator validator,
+    public RelayOutboxJob(String name, OutboxSource source, RelayStateStore state, EnvelopeValidator validator,
             EventPublisher publisher, RetryPolicy retryPolicy, Clock clock, RunLock lock) {
+        this.name = name;
         this.source = source;
         this.state = state;
         this.validator = validator;
@@ -89,7 +91,7 @@ public class RelayOutboxJob implements Job {
 
     @Override
     public String name() {
-        return "outbox-relay";
+        return name;
     }
 
     private void discover(Instant deadline) {

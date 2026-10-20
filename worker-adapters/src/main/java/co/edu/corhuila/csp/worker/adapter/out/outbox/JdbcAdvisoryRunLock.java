@@ -9,7 +9,7 @@ import java.util.Optional;
 import javax.sql.DataSource;
 
 /**
- * The instance lock of the relay as a PostgreSQL session advisory lock. The lock belongs to the
+ * The instance lock of the relay of one domain as a PostgreSQL session advisory lock. The lock belongs to the
  * session, so it is held on a connection of its own for as long as the run lasts; closing that
  * connection ends the session and PostgreSQL gives the lock back, and it does the same if the
  * process or the connection dies, so a crashed instance never blocks the others for good. The
@@ -17,13 +17,13 @@ import javax.sql.DataSource;
  */
 public class JdbcAdvisoryRunLock implements RunLock {
 
-    /** The ASCII of "cspoutbx": one fixed key for the outbox relay of the whole instance. */
-    static final long KEY = 0x6373706F75746278L;
-
     private final DataSource dataSource;
+    private final long key;
 
-    public JdbcAdvisoryRunLock(DataSource dataSource) {
+    /** One fixed key per domain, so the relays of two domains in the same instance do not wait for each other. */
+    public JdbcAdvisoryRunLock(DataSource dataSource, RelayDomain domain) {
         this.dataSource = dataSource;
+        this.key = domain.lockKey();
     }
 
     @Override
@@ -31,7 +31,7 @@ public class JdbcAdvisoryRunLock implements RunLock {
         Connection connection = null;
         try {
             connection = dataSource.getConnection();
-            if (granted(connection)) {
+            if (granted(connection, key)) {
                 return Optional.of(new Held(connection));
             }
             connection.close();
@@ -42,9 +42,9 @@ public class JdbcAdvisoryRunLock implements RunLock {
         }
     }
 
-    private static boolean granted(Connection connection) throws SQLException {
+    private static boolean granted(Connection connection, long key) throws SQLException {
         try (PreparedStatement statement = connection.prepareStatement("SELECT pg_try_advisory_lock(?)")) {
-            statement.setLong(1, KEY);
+            statement.setLong(1, key);
             try (ResultSet result = statement.executeQuery()) {
                 return result.next() && result.getBoolean(1);
             }

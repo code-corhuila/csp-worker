@@ -1,5 +1,6 @@
 package co.edu.corhuila.csp.worker.adapter.out.amqp;
 
+import co.edu.corhuila.csp.worker.adapter.out.outbox.RelayDomain;
 import co.edu.corhuila.csp.worker.application.port.out.EventPublisher;
 import co.edu.corhuila.csp.worker.application.port.out.OutboxEvent;
 import co.edu.corhuila.csp.worker.application.port.out.PublishException;
@@ -20,7 +21,7 @@ import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
- * Publishes the booking events to RabbitMQ the way ADR-014 asks: persistent delivery, publisher
+ * Publishes the events of one domain to RabbitMQ the way ADR-014 asks: persistent delivery, publisher
  * confirms, the {@code mandatory} flag and the event id as {@code messageId}, so a consumer
  * deduplicates the duplicates of an at-least-once delivery. The envelope goes out as it was
  * written; the relay never builds a new one.
@@ -36,26 +37,29 @@ public class AmqpEventPublisher implements EventPublisher, AutoCloseable {
     private final ObjectMapper mapper = new ObjectMapper();
     private final ConnectionFactory factory;
     private final String exchange;
+    private final RelayDomain domain;
     private final long confirmTimeoutMillis;
     private final AtomicReference<String> returned = new AtomicReference<>();
     private Connection connection;
     private Channel channel;
 
-    public AmqpEventPublisher(ConnectionFactory factory, String exchange, Duration confirmTimeout) {
+    public AmqpEventPublisher(ConnectionFactory factory, String exchange, Duration confirmTimeout,
+            RelayDomain domain) {
         this.factory = factory;
         this.exchange = exchange;
+        this.domain = domain;
         this.confirmTimeoutMillis = confirmTimeout.toMillis();
     }
 
-    /** {@code cine.booking.<event-type-in-kebab-case>.v<version>}, as {@code events.md} lists them. */
-    static String routingKeyOf(String eventType, int version) {
+    /** {@code cine.<domain>.<event-type-in-kebab-case>.v<version>}, as {@code events.md} lists them. */
+    static String routingKeyOf(RelayDomain domain, String eventType, int version) {
         String kebab = eventType.replaceAll("([a-z0-9])([A-Z])", "$1-$2").toLowerCase(Locale.ROOT);
-        return "cine.booking." + kebab + ".v" + version;
+        return "cine." + domain.schema() + "." + kebab + ".v" + version;
     }
 
     @Override
     public synchronized void publish(OutboxEvent event, String correlationId) {
-        String routingKey = routingKeyOf(event.eventType(), versionOf(event));
+        String routingKey = routingKeyOf(domain, event.eventType(), versionOf(event));
         AMQP.BasicProperties properties = new AMQP.BasicProperties.Builder()
                 .contentType("application/json")
                 .deliveryMode(2)
@@ -105,7 +109,7 @@ public class AmqpEventPublisher implements EventPublisher, AutoCloseable {
             return channel;
         }
         disconnect();
-        connection = factory.newConnection("csp-worker-outbox-relay");
+        connection = factory.newConnection("csp-worker-" + domain.schema() + "-outbox-relay");
         channel = connection.createChannel();
         channel.confirmSelect();
         channel.exchangeDeclare(exchange, "topic", true);
