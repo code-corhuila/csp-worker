@@ -20,6 +20,10 @@ services:
       # The outbox relay of booking (ADR-014) stays off until the platform has a RabbitMQ broker to point it at.
       OUTBOX_RELAY_ENABLED: ${OUTBOX_RELAY_ENABLED:-false}
       OUTBOX_RELAY_EVERY: ${OUTBOX_RELAY_EVERY:-5}
+      # The outbox relay of auth stays off until the consumers of Ticketing declare their queues (ADR-036).
+      AUTH_OUTBOX_RELAY_ENABLED: ${AUTH_OUTBOX_RELAY_ENABLED:-false}
+      AUTH_OUTBOX_RELAY_EVERY: ${AUTH_OUTBOX_RELAY_EVERY:-5}
+      AUTH_OUTBOX_RELAY_EVENT_TYPES: ${AUTH_OUTBOX_RELAY_EVENT_TYPES:-UserRegistered,UserEmailChanged}
       RELAY_DATABASE_URL: jdbc:postgresql://postgres:5432/${PG_DATABASE:-csp}
       RELAY_DATABASE_USER: worker_app
       RELAY_DATABASE_PASSWORD: ${WORKER_APP_PASSWORD:-}
