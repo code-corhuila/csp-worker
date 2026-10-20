@@ -18,9 +18,12 @@ import java.util.UUID;
  */
 public class EnvelopeSchemaValidator implements EnvelopeValidator {
 
-    private static final String SOURCE = "booking-service";
-
     private final ObjectMapper mapper = new ObjectMapper();
+    private final RelayDomain domain;
+
+    public EnvelopeSchemaValidator(RelayDomain domain) {
+        this.domain = domain;
+    }
 
     @Override
     public Optional<String> validate(OutboxEvent event) {
@@ -45,17 +48,21 @@ public class EnvelopeSchemaValidator implements EnvelopeValidator {
         if (!envelope.path("version").isInt() || envelope.path("version").asInt() < 1) {
             return Optional.of("envelope.version must be a positive integer");
         }
-        if (!SOURCE.equals(text(envelope, "source"))) {
-            return Optional.of("envelope.source must be " + SOURCE);
+        if (!domain.envelopeSource().equals(text(envelope, "source"))) {
+            return Optional.of("envelope.source must be " + domain.envelopeSource());
         }
         if (!hasUuid(envelope, "aggregateId", event.aggregateId())) {
             return Optional.of("envelope.aggregateId must equal the aggregate of the outbox row");
         }
-        if (text(envelope, "aggregateType") == null || text(envelope, "aggregateType").isBlank()) {
+        if (domain.tracedEnvelope() && (text(envelope, "aggregateType") == null
+                || text(envelope, "aggregateType").isBlank())) {
             return Optional.of("envelope.aggregateType must be a string");
         }
         if (!envelope.path("payload").isObject()) {
             return Optional.of("envelope.payload must be an object");
+        }
+        if (!domain.tracedEnvelope()) {
+            return Optional.empty();
         }
         JsonNode metadata = envelope.path("metadata");
         if (!metadata.isObject()) {

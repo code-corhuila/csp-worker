@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import co.edu.corhuila.csp.worker.adapter.out.outbox.RelayDomain;
 import co.edu.corhuila.csp.worker.application.port.out.OutboxEvent;
 import co.edu.corhuila.csp.worker.application.port.out.PublishException;
 import com.rabbitmq.client.Channel;
@@ -40,11 +41,11 @@ class AmqpEventPublisherTest {
     @Test
     void theRoutingKeyIsTheEventTypeInKebabCaseWithItsVersion() {
         assertEquals("cine.booking.reservation-held.v1",
-                AmqpEventPublisher.routingKeyOf("ReservationHeld", 1));
+                AmqpEventPublisher.routingKeyOf(RelayDomain.BOOKING, "ReservationHeld", 1));
         assertEquals("cine.booking.booking-confirmed.v1",
-                AmqpEventPublisher.routingKeyOf("BookingConfirmed", 1));
+                AmqpEventPublisher.routingKeyOf(RelayDomain.BOOKING, "BookingConfirmed", 1));
         assertEquals("cine.booking.reservation-expired.v2",
-                AmqpEventPublisher.routingKeyOf("ReservationExpired", 2));
+                AmqpEventPublisher.routingKeyOf(RelayDomain.BOOKING, "ReservationExpired", 2));
     }
 
     @Test
@@ -52,7 +53,7 @@ class AmqpEventPublisherTest {
         ConnectionFactory factory = new ConnectionFactory();
         factory.setUri(URI.create("amqp://guest:guest@127.0.0.1:1"));
         factory.setConnectionTimeout(500);
-        AmqpEventPublisher publisher = new AmqpEventPublisher(factory, EXCHANGE, Duration.ofSeconds(2));
+        AmqpEventPublisher publisher = new AmqpEventPublisher(factory, EXCHANGE, Duration.ofSeconds(2), RelayDomain.BOOKING);
 
         PublishException failure = assertThrows(PublishException.class,
                 () -> publisher.publish(event("ReservationHeld", 1), "corr-1"));
@@ -80,7 +81,7 @@ class AmqpEventPublisherTest {
             consumer.queuePurge("relay.test");
             consumer.queueBind("relay.test", EXCHANGE, "cine.booking.reservation-held.v1");
             consumer.queueBind("relay.test", EXCHANGE, "cine.booking.booking-confirmed.v1");
-            publisher = new AmqpEventPublisher(factory, EXCHANGE, Duration.ofSeconds(5));
+            publisher = new AmqpEventPublisher(factory, EXCHANGE, Duration.ofSeconds(5), RelayDomain.BOOKING);
         }
 
         @AfterEach

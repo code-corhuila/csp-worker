@@ -6,6 +6,7 @@ import co.edu.corhuila.csp.worker.adapter.out.outbox.EnvelopeSchemaValidator;
 import co.edu.corhuila.csp.worker.adapter.out.outbox.JdbcAdvisoryRunLock;
 import co.edu.corhuila.csp.worker.adapter.out.outbox.JdbcOutboxSource;
 import co.edu.corhuila.csp.worker.adapter.out.outbox.JdbcRelayStateStore;
+import co.edu.corhuila.csp.worker.adapter.out.outbox.RelayDomain;
 import co.edu.corhuila.csp.worker.application.usecase.RelayOutboxJob;
 import co.edu.corhuila.csp.worker.application.usecase.RetryPolicy;
 import com.rabbitmq.client.ConnectionFactory;
@@ -13,6 +14,7 @@ import com.zaxxer.hikari.HikariDataSource;
 import java.net.URI;
 import java.time.Clock;
 import java.time.Duration;
+import java.util.List;
 import java.util.concurrent.ThreadLocalRandom;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -56,7 +58,8 @@ public class OutboxRelayConfiguration {
         ConnectionFactory factory = new ConnectionFactory();
         factory.setUri(URI.create(url));
         factory.setConnectionTimeout(5_000);
-        return new AmqpEventPublisher(factory, exchange, Duration.ofSeconds(confirmTimeoutSeconds));
+        return new AmqpEventPublisher(factory, exchange, Duration.ofSeconds(confirmTimeoutSeconds),
+                RelayDomain.BOOKING);
     }
 
     /** Not pooled on purpose: the lock lives as long as its connection (see {@link JdbcAdvisoryRunLock}). */
@@ -65,7 +68,7 @@ public class OutboxRelayConfiguration {
             @Value("${worker.outbox-relay.database.url:}") String url,
             @Value("${worker.outbox-relay.database.username:worker_app}") String username,
             @Value("${worker.outbox-relay.database.password:}") String password) {
-        return new JdbcAdvisoryRunLock(new DriverManagerDataSource(url, username, password));
+        return new JdbcAdvisoryRunLock(new DriverManagerDataSource(url, username, password), RelayDomain.BOOKING);
     }
 
     @Bean
@@ -73,13 +76,15 @@ public class OutboxRelayConfiguration {
             JdbcAdvisoryRunLock relayLock,
             @Value("${worker.outbox-relay.interval-seconds:5}") long intervalSeconds) {
         JdbcTemplate jdbc = new JdbcTemplate(relayDataSource);
-        RelayOutboxJob job = new RelayOutboxJob(new JdbcOutboxSource(jdbc), new JdbcRelayStateStore(jdbc),
-                new EnvelopeSchemaValidator(), relayPublisher,
+        RelayOutboxJob job = new RelayOutboxJob("outbox-relay",
+                new JdbcOutboxSource(jdbc, RelayDomain.BOOKING, List.of()),
+                new JdbcRelayStateStore(jdbc, RelayDomain.BOOKING),
+                new EnvelopeSchemaValidator(RelayDomain.BOOKING), relayPublisher,
                 new RetryPolicy(() -> ThreadLocalRandom.current().nextDouble()), Clock.systemUTC(), relayLock);
         return new ScheduledJob(job, Duration.ofSeconds(intervalSeconds));
     }
 
-    private static void require(String value, String variable) {
+    static void require(String value, String variable) {
         if (value == null || value.isBlank()) {
             throw new IllegalStateException(variable + " is required when the outbox relay is enabled");
         }

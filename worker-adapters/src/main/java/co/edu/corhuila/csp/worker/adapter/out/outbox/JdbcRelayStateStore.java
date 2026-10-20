@@ -13,12 +13,11 @@ import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 /**
- * The publication state of the booking relay in schema {@code worker} (ADR-014): the only tables
- * the worker writes. It never writes the booking schema.
+ * The publication state of the relay of one domain in schema {@code worker} (ADR-014, ADR-019): the
+ * only tables the worker writes. Every row is keyed by the {@code source} of its domain, so the
+ * relays of two domains never see each other's events or cursor. It never writes a domain schema.
  */
 public class JdbcRelayStateStore implements RelayStateStore {
-
-    static final String SOURCE = "booking";
 
     private static final String CURSOR = """
             SELECT last_created_at, last_event_id FROM worker.outbox_relay_cursor WHERE source = ?
@@ -59,27 +58,29 @@ public class JdbcRelayStateStore implements RelayStateStore {
             """;
 
     private final JdbcTemplate jdbc;
+    private final String source;
 
-    public JdbcRelayStateStore(JdbcTemplate jdbc) {
+    public JdbcRelayStateStore(JdbcTemplate jdbc, RelayDomain domain) {
         this.jdbc = jdbc;
+        this.source = domain.schema();
     }
 
     @Override
     public Optional<OutboxPosition> cursor() {
         return jdbc.query(CURSOR, (row, index) -> new OutboxPosition(row.getTimestamp("last_created_at").toInstant(),
-                row.getObject("last_event_id", UUID.class)), SOURCE).stream().findFirst();
+                row.getObject("last_event_id", UUID.class)), source).stream().findFirst();
     }
 
     @Override
     public void saveCursor(OutboxPosition position) {
-        jdbc.update(SAVE_CURSOR, SOURCE, Timestamp.from(position.createdAt()), position.id());
+        jdbc.update(SAVE_CURSOR, source, Timestamp.from(position.createdAt()), position.id());
     }
 
     @Override
     public void track(Collection<UUID> eventIds, Instant now) {
         jdbc.batchUpdate(TRACK, eventIds, eventIds.size(), (statement, id) -> {
             statement.setObject(1, id);
-            statement.setString(2, SOURCE);
+            statement.setString(2, source);
             statement.setTimestamp(3, Timestamp.from(now));
         });
     }
@@ -87,7 +88,7 @@ public class JdbcRelayStateStore implements RelayStateStore {
     @Override
     public List<PendingEvent> duePending(Instant now, int limit) {
         return jdbc.query(DUE, (row, index) -> new PendingEvent(row.getObject("event_id", UUID.class),
-                row.getInt("attempt_count")), SOURCE, Timestamp.from(now), limit);
+                row.getInt("attempt_count")), source, Timestamp.from(now), limit);
     }
 
     @Override

@@ -1,6 +1,7 @@
 package co.edu.corhuila.csp.worker.adapter.out.outbox;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import co.edu.corhuila.csp.worker.application.port.out.OutboxEvent;
@@ -27,7 +28,7 @@ class JdbcOutboxSourceTest {
     @BeforeEach
     void setUp() {
         jdbc = PostgresSupport.freshDatabase();
-        source = new JdbcOutboxSource(jdbc);
+        source = new JdbcOutboxSource(jdbc, RelayDomain.BOOKING, List.of());
     }
 
     @Test
@@ -80,6 +81,28 @@ class JdbcOutboxSourceTest {
         List<OutboxEvent> rows = source.findByIds(List.of(A, B));
 
         assertEquals(List.of(A), rows.stream().map(OutboxEvent::id).toList());
+    }
+
+    @Test
+    void theAuthOutboxIsReadFromItsOwnSchemaAndOnlyTheRequestedTypesAreDiscovered() {
+        UUID registered = PostgresSupport.insertAuthEvent(jdbc, "UserRegistered", "2026-10-07T12:00:01Z");
+        PostgresSupport.insertAuthEvent(jdbc, "UserRoleChanged", "2026-10-07T12:00:02Z");
+        UUID emailChanged = PostgresSupport.insertAuthEvent(jdbc, "UserEmailChanged", "2026-10-07T12:00:03Z");
+        PostgresSupport.insertEvent(jdbc, A, "UserRegistered", "2026-10-07T12:00:04Z", "booking-row");
+        JdbcOutboxSource auth = new JdbcOutboxSource(jdbc, RelayDomain.AUTH, List.of("UserRegistered", "UserEmailChanged"));
+
+        List<OutboxEvent> rows = auth.discover(OutboxPosition.START, 10);
+
+        assertEquals(List.of(registered, emailChanged), rows.stream().map(OutboxEvent::id).toList());
+        assertNull(rows.get(0).correlationId(), "the auth envelope carries no metadata");
+    }
+
+    @Test
+    void anEmptySetOfTypesReadsEveryTypeOfTheOutbox() {
+        PostgresSupport.insertAuthEvent(jdbc, "UserRegistered", "2026-10-07T12:00:01Z");
+        PostgresSupport.insertAuthEvent(jdbc, "UserRoleChanged", "2026-10-07T12:00:02Z");
+
+        assertEquals(2, new JdbcOutboxSource(jdbc, RelayDomain.AUTH, List.of()).discover(OutboxPosition.START, 10).size());
     }
 
     @Test

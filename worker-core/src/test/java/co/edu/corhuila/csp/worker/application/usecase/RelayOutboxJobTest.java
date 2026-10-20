@@ -34,7 +34,12 @@ class RelayOutboxJobTest {
 
     @BeforeEach
     void setUp() {
-        job = new RelayOutboxJob(source, state, validator, publisher, new RetryPolicy(() -> 0.5), clock, lock);
+        job = new RelayOutboxJob("outbox-relay", source, state, validator, publisher, new RetryPolicy(() -> 0.5), clock, lock);
+    }
+
+    @Test
+    void theJobIsNamedAfterTheRelayItServes() {
+        assertEquals("outbox-relay", job.name());
     }
 
     @Test
