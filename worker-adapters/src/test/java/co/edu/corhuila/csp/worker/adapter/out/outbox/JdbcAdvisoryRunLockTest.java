@@ -42,7 +42,17 @@ class JdbcAdvisoryRunLockTest {
     }
 
     private RunLock instance() {
-        return new JdbcAdvisoryRunLock(dataSource);
+        return new JdbcAdvisoryRunLock(dataSource, RelayDomain.BOOKING);
+    }
+
+    @Test
+    void theRelaysOfTwoDomainsDoNotWaitForEachOther() {
+        try (RunLock.Lease booking = instance().tryAcquire().orElseThrow()) {
+            Optional<RunLock.Lease> auth = new JdbcAdvisoryRunLock(dataSource, RelayDomain.AUTH).tryAcquire();
+
+            assertTrue(auth.isPresent(), "the auth relay must not be blocked by the booking one");
+            auth.get().close();
+        }
     }
 
     @Test
@@ -125,7 +135,7 @@ class JdbcAdvisoryRunLockTest {
 
     private RelayOutboxJob relay(EventPublisher broker) {
         EnvelopeValidator valid = event -> Optional.empty();
-        return new RelayOutboxJob(new JdbcOutboxSource(jdbc), new JdbcRelayStateStore(jdbc), valid, broker,
+        return new RelayOutboxJob("outbox-relay", new JdbcOutboxSource(jdbc, RelayDomain.BOOKING, List.of()), new JdbcRelayStateStore(jdbc, RelayDomain.BOOKING), valid, broker,
                 new RetryPolicy(() -> 0.5), Clock.systemUTC(), instance());
     }
 }
