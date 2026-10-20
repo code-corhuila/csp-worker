@@ -10,8 +10,8 @@ import org.springframework.jdbc.datasource.DriverManagerDataSource;
 /**
  * A real PostgreSQL for the adapter tests, the same way the booking API tests get one: the tests
  * run when {@code TEST_DATABASE_URL} is set and are skipped otherwise. The worker schema is the
- * migration of {@code db/} applied as it is; the outbox table is the one of {@code csp-booking-db}
- * reduced to the columns the relay reads, because the schema of the booking domain lives there.
+ * migration of {@code db/} applied as it is; the outbox tables are the ones of {@code csp-booking-db}
+ * and {@code csp-auth-db} reduced to the columns the relay reads, because the schemas of those domains live there.
  */
 final class PostgresSupport {
 
@@ -31,6 +31,19 @@ final class PostgresSupport {
                 """);
         jdbc.execute("DROP SCHEMA IF EXISTS worker CASCADE");
         jdbc.execute("DROP SCHEMA IF EXISTS booking CASCADE");
+        jdbc.execute("DROP SCHEMA IF EXISTS auth CASCADE");
+        jdbc.execute("CREATE SCHEMA auth");
+        jdbc.execute("""
+                CREATE TABLE auth.outbox_event (
+                    id             uuid        NOT NULL,
+                    aggregate_type text        NOT NULL,
+                    aggregate_id   uuid        NOT NULL,
+                    event_type     text        NOT NULL,
+                    payload        jsonb       NOT NULL,
+                    created_at     timestamptz NOT NULL DEFAULT NOW(),
+                    CONSTRAINT pk_auth_outbox_event PRIMARY KEY (id)
+                )
+                """);
         jdbc.execute("CREATE SCHEMA booking");
         jdbc.execute("""
                 CREATE TABLE booking.outbox_event (
@@ -52,6 +65,18 @@ final class PostgresSupport {
             return null;
         });
         return jdbc;
+    }
+
+    /** A row of the auth outbox the way {@code csp-auth-api} writes it: no aggregate type or metadata inside the envelope. */
+    static java.util.UUID insertAuthEvent(JdbcTemplate jdbc, String eventType, String createdAt) {
+        java.util.UUID id = java.util.UUID.randomUUID();
+        java.util.UUID user = java.util.UUID.randomUUID();
+        String envelope = "{\"eventId\":\"" + id + "\",\"eventType\":\"" + eventType + "\",\"occurredAt\":\""
+                + createdAt + "\",\"version\":1,\"source\":\"auth-service\",\"aggregateId\":\"" + user
+                + "\",\"payload\":{\"userId\":\"" + user + "\"}}";
+        jdbc.update("INSERT INTO auth.outbox_event (id, aggregate_type, aggregate_id, event_type, payload, "
+                + "created_at) VALUES (?, 'User', ?, ?, ?::jsonb, ?::timestamptz)", id, user, eventType, envelope, createdAt);
+        return id;
     }
 
     static void insertEvent(JdbcTemplate jdbc, java.util.UUID id, String eventType, String createdAt,
