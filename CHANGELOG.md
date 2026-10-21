@@ -10,6 +10,11 @@ and is tagged `v<version>` once it is merged.
 
 ### Added
 
+- `deploy/compose.yml` passes `AUTH_OUTBOX_RELAY_ENABLED` (off), `AUTH_OUTBOX_RELAY_EVERY` and `AUTH_OUTBOX_RELAY_EVENT_TYPES` with the defaults of the application (code-corhuila/csp-worker#30).
+- Outbox relay of auth (ADR-019): `auth-outbox-relay` publishes `auth.outbox_event` to `cine.events` with the same at-least-once, backoff and
+  permanent-failure semantics as the booking relay, with its own state key (`source` `auth`), advisory lock and broker connection. Off by default
+  (`AUTH_OUTBOX_RELAY_ENABLED`); it publishes only the event types of `AUTH_OUTBOX_RELAY_EVENT_TYPES` (`UserRegistered,UserEmailChanged` by default), so
+  `UserRoleChanged` can be enabled later with no code change. Routing keys `cine.auth.<event-type>.v1`. Must not be turned on before the consumers exist.
 - Instance lock of the outbox relay (ADR-014, code-corhuila/csp-worker#26): a run takes a PostgreSQL session advisory lock before it
   publishes, and an instance that does not get it skips the run, so two relays never publish at the same time. The lock port is `RunLock`,
   the adapter `JdbcAdvisoryRunLock` (a connection of its own, released when it closes or dies). The README no longer describes the single
@@ -20,6 +25,9 @@ and is tagged `v<version>` once it is merged.
 
 ### Changed
 
+- The end-to-end test of the auth relay no longer assumes the publication order of the events of one batch, which the relay does not guarantee.
+- The relay adapters take the domain they serve (`RelayDomain`): schema of the outbox, `source` of the state, lock key, routing key domain and the
+  envelope `source`. The booking relay behaves as before.
 - The retry policy of the HTTP clients moved to a shared `RetryingHttp` with the same behaviour; `ServiceTokenSource`
   exists while `expire-holds` or `purge-auth` is on.
 
