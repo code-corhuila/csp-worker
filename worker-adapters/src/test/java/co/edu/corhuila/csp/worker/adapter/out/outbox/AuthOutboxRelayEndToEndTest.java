@@ -15,7 +15,9 @@ import com.rabbitmq.client.GetResponse;
 import java.net.URI;
 import java.time.Clock;
 import java.time.Duration;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -86,14 +88,14 @@ class AuthOutboxRelayEndToEndTest {
         JobResult result = job.run();
 
         assertEquals(2, result.processed());
-        GetResponse first = consumer.basicGet("relay.auth.e2e", true);
-        GetResponse second = consumer.basicGet("relay.auth.e2e", true);
-        assertNotNull(first);
-        assertNotNull(second);
-        assertEquals("cine.auth.user-registered.v1", first.getEnvelope().getRoutingKey());
-        assertEquals(registered.toString(), first.getProps().getMessageId());
-        assertEquals("cine.auth.user-email-changed.v1", second.getEnvelope().getRoutingKey());
-        assertEquals(emailChanged.toString(), second.getProps().getMessageId());
+        Map<String, String> messageIdByRoutingKey = new HashMap<>();
+        for (int received = 0; received < 2; received++) {
+            GetResponse message = consumer.basicGet("relay.auth.e2e", true);
+            assertNotNull(message);
+            messageIdByRoutingKey.put(message.getEnvelope().getRoutingKey(), message.getProps().getMessageId());
+        }
+        assertEquals(Map.of("cine.auth.user-registered.v1", registered.toString(),
+                "cine.auth.user-email-changed.v1", emailChanged.toString()), messageIdByRoutingKey);
         assertEquals("PUBLISHED", status(registered));
         assertEquals("auth", jdbc.queryForObject("SELECT source FROM worker.outbox_relay_state WHERE event_id = ?",
                 String.class, registered));
