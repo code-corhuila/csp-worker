@@ -27,6 +27,7 @@ and is tagged `v<version>` once it is merged.
 
 ### Changed
 
+- The end-to-end test of the auth relay no longer assumes the publication order of the events of one batch, which the relay does not guarantee.
 - The relay adapters take the domain they serve (`RelayDomain`): schema of the outbox, `source` of the state, lock key, routing key domain and the
   envelope `source`. The booking relay behaves as before.
 - The retry policy of the HTTP clients moved to a shared `RetryingHttp` with the same behaviour; `ServiceTokenSource`
