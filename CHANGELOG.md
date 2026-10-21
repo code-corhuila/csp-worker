@@ -10,6 +10,10 @@ and is tagged `v<version>` once it is merged.
 
 ### Added
 
+- Instance lock of the outbox relay (ADR-014, code-corhuila/csp-worker#26): a run takes a PostgreSQL session advisory lock before it
+  publishes, and an instance that does not get it skips the run, so two relays never publish at the same time. The lock port is `RunLock`,
+  the adapter `JdbcAdvisoryRunLock` (a connection of its own, released when it closes or dies). The README no longer describes the single
+  instance as a convention.
 - `purge-auth` job (HU-AUTH-002, ADR-030): on a schedule it calls the internal purge of `csp-auth-api` in batches until the
   service reports no more, the run is out of time or it reaches its cap of calls, with the service token. Off by default
   (`PURGE_AUTH_ENABLED`); settings `AUTH_API_URL`, `PURGE_EVERY`, `PURGE_BATCH_SIZE` and `PURGE_RUN_TIMEOUT`.

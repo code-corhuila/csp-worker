@@ -15,7 +15,7 @@ class EnvelopeSchemaValidatorTest {
     private static final UUID ID = UUID.fromString("11111111-1111-4111-8111-111111111111");
     private static final UUID AGGREGATE = UUID.fromString("22222222-2222-4222-8222-222222222222");
 
-    private final EnvelopeSchemaValidator validator = new EnvelopeSchemaValidator();
+    private final EnvelopeSchemaValidator validator = new EnvelopeSchemaValidator(RelayDomain.BOOKING);
 
     private static String envelope(String eventId, String eventType, String occurredAt, String version,
             String source, String aggregateId, String aggregateType, String payload, String metadata) {

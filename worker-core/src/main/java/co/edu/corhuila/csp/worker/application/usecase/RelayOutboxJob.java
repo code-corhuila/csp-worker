@@ -11,6 +11,7 @@ import co.edu.corhuila.csp.worker.application.port.out.PendingEvent;
 import co.edu.corhuila.csp.worker.application.port.out.PublishException;
 import co.edu.corhuila.csp.worker.application.port.out.RelayStateStore;
 import co.edu.corhuila.csp.worker.application.port.out.RelayStatus;
+import co.edu.corhuila.csp.worker.application.port.out.RunLock;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -24,7 +25,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * The outbox relay of ADR-014: publishes the events the booking API wrote to its outbox, with
+ * The outbox relay of ADR-014 and ADR-019: publishes the events a domain API wrote to its outbox, with
  * read-only access to it and the publication state in the worker's own schema (Norma 5.3.11).
  *
  * <p>One run discovers new rows, then publishes the events that are due. Discovery re-reads the
@@ -33,6 +34,10 @@ import org.slf4j.LoggerFactory;
  * at-least-once: a crash between the broker confirmation and the state update publishes the same
  * event id again, and consumers deduplicate by it (ADR-007). A run is bounded by 100 events and 20
  * seconds (Norma 5.7) and carries its own correlation id.
+ *
+ * <p>A run starts only when it gets the instance lock, so two instances of the worker never relay
+ * at the same time (ADR-014: one relay per environment). The one that does not get it does nothing
+ * and tries again on its next run; the lock is held for the run, which is bounded.
  */
 public class RelayOutboxJob implements Job {
 
@@ -49,15 +54,19 @@ public class RelayOutboxJob implements Job {
     private final EventPublisher publisher;
     private final RetryPolicy retryPolicy;
     private final Clock clock;
+    private final RunLock lock;
+    private final String name;
 
-    public RelayOutboxJob(OutboxSource source, RelayStateStore state, EnvelopeValidator validator,
-            EventPublisher publisher, RetryPolicy retryPolicy, Clock clock) {
+    public RelayOutboxJob(String name, OutboxSource source, RelayStateStore state, EnvelopeValidator validator,
+            EventPublisher publisher, RetryPolicy retryPolicy, Clock clock, RunLock lock) {
+        this.name = name;
         this.source = source;
         this.state = state;
         this.validator = validator;
         this.publisher = publisher;
         this.retryPolicy = retryPolicy;
         this.clock = clock;
+        this.lock = lock;
     }
 
     @Override
@@ -65,8 +74,15 @@ public class RelayOutboxJob implements Job {
         String runId = UUID.randomUUID().toString();
         Instant deadline = clock.instant().plus(RUN_LIMIT);
         try {
-            discover(deadline);
-            return publishDue(runId, deadline);
+            Optional<RunLock.Lease> lease = lock.tryAcquire();
+            if (lease.isEmpty()) {
+                log.debug("outbox relay run skipped, another instance holds the lock: correlationId={}", runId);
+                return new JobResult(0, 0);
+            }
+            try (RunLock.Lease held = lease.get()) {
+                discover(deadline);
+                return publishDue(runId, deadline);
+            }
         } catch (Exception exception) {
             log.error("outbox relay run failed: correlationId={}", runId, exception);
             return new JobResult(0, 1);
@@ -75,7 +91,7 @@ public class RelayOutboxJob implements Job {
 
     @Override
     public String name() {
-        return "outbox-relay";
+        return name;
     }
 
     private void discover(Instant deadline) {

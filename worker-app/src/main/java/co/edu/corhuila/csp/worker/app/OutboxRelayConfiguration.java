@@ -3,8 +3,10 @@ package co.edu.corhuila.csp.worker.app;
 import co.edu.corhuila.csp.worker.adapter.in.scheduler.ScheduledJob;
 import co.edu.corhuila.csp.worker.adapter.out.amqp.AmqpEventPublisher;
 import co.edu.corhuila.csp.worker.adapter.out.outbox.EnvelopeSchemaValidator;
+import co.edu.corhuila.csp.worker.adapter.out.outbox.JdbcAdvisoryRunLock;
 import co.edu.corhuila.csp.worker.adapter.out.outbox.JdbcOutboxSource;
 import co.edu.corhuila.csp.worker.adapter.out.outbox.JdbcRelayStateStore;
+import co.edu.corhuila.csp.worker.adapter.out.outbox.RelayDomain;
 import co.edu.corhuila.csp.worker.application.usecase.RelayOutboxJob;
 import co.edu.corhuila.csp.worker.application.usecase.RetryPolicy;
 import com.rabbitmq.client.ConnectionFactory;
@@ -12,12 +14,14 @@ import com.zaxxer.hikari.HikariDataSource;
 import java.net.URI;
 import java.time.Clock;
 import java.time.Duration;
+import java.util.List;
 import java.util.concurrent.ThreadLocalRandom;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.datasource.DriverManagerDataSource;
 
 /**
  * The outbox relay of booking (ADR-014), composed only when {@code worker.outbox-relay.enabled} is
@@ -54,20 +58,33 @@ public class OutboxRelayConfiguration {
         ConnectionFactory factory = new ConnectionFactory();
         factory.setUri(URI.create(url));
         factory.setConnectionTimeout(5_000);
-        return new AmqpEventPublisher(factory, exchange, Duration.ofSeconds(confirmTimeoutSeconds));
+        return new AmqpEventPublisher(factory, exchange, Duration.ofSeconds(confirmTimeoutSeconds),
+                RelayDomain.BOOKING);
+    }
+
+    /** Not pooled on purpose: the lock lives as long as its connection (see {@link JdbcAdvisoryRunLock}). */
+    @Bean
+    JdbcAdvisoryRunLock relayLock(
+            @Value("${worker.outbox-relay.database.url:}") String url,
+            @Value("${worker.outbox-relay.database.username:worker_app}") String username,
+            @Value("${worker.outbox-relay.database.password:}") String password) {
+        return new JdbcAdvisoryRunLock(new DriverManagerDataSource(url, username, password), RelayDomain.BOOKING);
     }
 
     @Bean
     ScheduledJob outboxRelayJob(HikariDataSource relayDataSource, AmqpEventPublisher relayPublisher,
+            JdbcAdvisoryRunLock relayLock,
             @Value("${worker.outbox-relay.interval-seconds:5}") long intervalSeconds) {
         JdbcTemplate jdbc = new JdbcTemplate(relayDataSource);
-        RelayOutboxJob job = new RelayOutboxJob(new JdbcOutboxSource(jdbc), new JdbcRelayStateStore(jdbc),
-                new EnvelopeSchemaValidator(), relayPublisher,
-                new RetryPolicy(() -> ThreadLocalRandom.current().nextDouble()), Clock.systemUTC());
+        RelayOutboxJob job = new RelayOutboxJob("outbox-relay",
+                new JdbcOutboxSource(jdbc, RelayDomain.BOOKING, List.of()),
+                new JdbcRelayStateStore(jdbc, RelayDomain.BOOKING),
+                new EnvelopeSchemaValidator(RelayDomain.BOOKING), relayPublisher,
+                new RetryPolicy(() -> ThreadLocalRandom.current().nextDouble()), Clock.systemUTC(), relayLock);
         return new ScheduledJob(job, Duration.ofSeconds(intervalSeconds));
     }
 
-    private static void require(String value, String variable) {
+    static void require(String value, String variable) {
         if (value == null || value.isBlank()) {
             throw new IllegalStateException(variable + " is required when the outbox relay is enabled");
         }
