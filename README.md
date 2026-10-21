@@ -51,6 +51,7 @@ It has its own flag, its own PostgreSQL advisory lock and its own broker connect
 - Routing keys come from the event type: `cine.auth.user-registered.v1`, `cine.auth.user-email-changed.v1` and `cine.auth.user-role-changed.v1`.
 - The auth envelope has `source` `auth-service` and carries no `aggregateType` or `metadata`, so the relay does not require them and uses the id of the run as the
   correlation id of the message.
+- The relay does not guarantee the publication order of the events of the same batch (at-least-once delivery, not ordering): consumers must not depend on it.
 - One relay instance per environment: the lock of the auth relay is separate from the booking one, and an instance that does not get it skips the run.
   It needs the migration of `db/` like the booking relay, and the same `RELAY_*` variables.
 
