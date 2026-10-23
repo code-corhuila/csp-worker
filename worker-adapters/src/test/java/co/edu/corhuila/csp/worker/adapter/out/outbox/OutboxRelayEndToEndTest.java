@@ -15,6 +15,7 @@ import com.rabbitmq.client.GetResponse;
 import java.net.URI;
 import java.time.Clock;
 import java.time.Duration;
+import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -52,9 +53,11 @@ class OutboxRelayEndToEndTest {
         consumer.queueDeclare("relay.e2e", false, false, true, null);
         consumer.queuePurge("relay.e2e");
         consumer.queueBind("relay.e2e", EXCHANGE, "cine.booking.reservation-held.v1");
-        publisher = new AmqpEventPublisher(factory, EXCHANGE, Duration.ofSeconds(5));
-        job = new RelayOutboxJob(new JdbcOutboxSource(jdbc), new JdbcRelayStateStore(jdbc),
-                new EnvelopeSchemaValidator(), publisher, new RetryPolicy(() -> 0.5), Clock.systemUTC());
+        publisher = new AmqpEventPublisher(factory, EXCHANGE, Duration.ofSeconds(5), RelayDomain.BOOKING);
+        job = new RelayOutboxJob("outbox-relay", new JdbcOutboxSource(jdbc, RelayDomain.BOOKING, List.of()), new JdbcRelayStateStore(jdbc, RelayDomain.BOOKING),
+                new EnvelopeSchemaValidator(RelayDomain.BOOKING), publisher, new RetryPolicy(() -> 0.5), Clock.systemUTC(),
+                new JdbcAdvisoryRunLock(new org.springframework.jdbc.datasource.DriverManagerDataSource(
+                        System.getenv("TEST_DATABASE_URL")), RelayDomain.BOOKING));
     }
 
     @AfterEach

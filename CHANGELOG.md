@@ -8,6 +8,35 @@ and is tagged `v<version>` once it is merged.
 
 ## [Unreleased]
 
+## [3.0.0] - 2026-10-15
+
+### Fixed
+
+- The outbox relays no longer declare the exchange (HU-AUTH-004, ADR-036): the login `worker_relay` has `configure ^$`, so the declaration was refused and nothing was published. `AmqpEventPublisher` now checks that the exchange exists with a passive declaration and publishes; a missing exchange is a retryable failure that logs its name (no credential), reopens the connection and recovers when the exchange appears. An AMQP URL with an empty virtual host (ending in a bare `/`) stops the startup with a message that asks for `/%2F`.
+
+### Added
+
+- `deploy/compose.yml` passes `AUTH_OUTBOX_RELAY_ENABLED` (off), `AUTH_OUTBOX_RELAY_EVERY` and `AUTH_OUTBOX_RELAY_EVENT_TYPES` with the defaults of the application (code-corhuila/csp-worker#30).
+- Outbox relay of auth (ADR-019): `auth-outbox-relay` publishes `auth.outbox_event` to `cine.events` with the same at-least-once, backoff and
+  permanent-failure semantics as the booking relay, with its own state key (`source` `auth`), advisory lock and broker connection. Off by default
+  (`AUTH_OUTBOX_RELAY_ENABLED`); it publishes only the event types of `AUTH_OUTBOX_RELAY_EVENT_TYPES` (`UserRegistered,UserEmailChanged` by default), so
+  `UserRoleChanged` can be enabled later with no code change. Routing keys `cine.auth.<event-type>.v1`. Must not be turned on before the consumers exist.
+- Instance lock of the outbox relay (ADR-014, code-corhuila/csp-worker#26): a run takes a PostgreSQL session advisory lock before it
+  publishes, and an instance that does not get it skips the run, so two relays never publish at the same time. The lock port is `RunLock`,
+  the adapter `JdbcAdvisoryRunLock` (a connection of its own, released when it closes or dies). The README no longer describes the single
+  instance as a convention.
+- `purge-auth` job (HU-AUTH-002, ADR-030): on a schedule it calls the internal purge of `csp-auth-api` in batches until the
+  service reports no more, the run is out of time or it reaches its cap of calls, with the service token. Off by default
+  (`PURGE_AUTH_ENABLED`); settings `AUTH_API_URL`, `PURGE_EVERY`, `PURGE_BATCH_SIZE` and `PURGE_RUN_TIMEOUT`.
+
+### Changed
+
+- The end-to-end test of the auth relay no longer assumes the publication order of the events of one batch, which the relay does not guarantee.
+- The relay adapters take the domain they serve (`RelayDomain`): schema of the outbox, `source` of the state, lock key, routing key domain and the
+  envelope `source`. The booking relay behaves as before.
+- The retry policy of the HTTP clients moved to a shared `RetryingHttp` with the same behaviour; `ServiceTokenSource`
+  exists while `expire-holds` or `purge-auth` is on.
+
 ## [2.0.0] - 2026-10-08
 
 First release. Background jobs of the Booking domain (numeral 4.3), serving the stories HU-BOOKING-001, HU-BOOKING-002 and

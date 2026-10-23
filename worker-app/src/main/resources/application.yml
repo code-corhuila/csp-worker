@@ -18,6 +18,12 @@ worker:
   expire-holds:
     enabled: ${EXPIRE_HOLDS_ENABLED:true}
     interval-seconds: ${EXPIRE_EVERY:60}
+  # Asks the identity service to purge what it no longer needs (HU-AUTH-002, ADR-030). Off until it is wanted.
+  purge-auth:
+    enabled: ${PURGE_AUTH_ENABLED:false}
+    interval-seconds: ${PURGE_EVERY:3600}
+    batch-size: ${PURGE_BATCH_SIZE:500}
+    run-timeout-seconds: ${PURGE_RUN_TIMEOUT:60}
   # Publishes the booking outbox to RabbitMQ (ADR-014). Off until the platform has a broker.
   outbox-relay:
     enabled: ${OUTBOX_RELAY_ENABLED:false}
@@ -30,10 +36,21 @@ worker:
       url: ${RELAY_AMQP_URL:}
       exchange: ${RELAY_AMQP_EXCHANGE:cine.events}
       confirm-timeout-seconds: 5
+  # Publishes the auth outbox (ADR-019) with the login and broker above. Off until the consumers exist.
+  # Only the listed event types are published: UserRoleChanged has no consumer in the MVP.
+  auth-outbox-relay:
+    enabled: ${AUTH_OUTBOX_RELAY_ENABLED:false}
+    interval-seconds: ${AUTH_OUTBOX_RELAY_EVERY:5}
+    event-types: ${AUTH_OUTBOX_RELAY_EVENT_TYPES:UserRegistered,UserEmailChanged}
 
 booking:
   api:
     url: ${BOOKING_API_URL:http://booking-api:8083/api/v1/booking}
+    timeout-seconds: 10
+
+auth:
+  api:
+    url: ${AUTH_API_URL:http://auth-api:8081/api/v1/auth}
     timeout-seconds: 10
 
 logging:
