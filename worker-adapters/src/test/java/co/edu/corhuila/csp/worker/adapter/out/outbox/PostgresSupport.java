@@ -32,6 +32,7 @@ final class PostgresSupport {
         jdbc.execute("DROP SCHEMA IF EXISTS worker CASCADE");
         jdbc.execute("DROP SCHEMA IF EXISTS booking CASCADE");
         jdbc.execute("DROP SCHEMA IF EXISTS auth CASCADE");
+        jdbc.execute("DROP SCHEMA IF EXISTS concessions CASCADE");
         jdbc.execute("CREATE SCHEMA auth");
         jdbc.execute("""
                 CREATE TABLE auth.outbox_event (
@@ -42,6 +43,18 @@ final class PostgresSupport {
                     payload        jsonb       NOT NULL,
                     created_at     timestamptz NOT NULL DEFAULT NOW(),
                     CONSTRAINT pk_auth_outbox_event PRIMARY KEY (id)
+                )
+                """);
+        jdbc.execute("CREATE SCHEMA concessions");
+        jdbc.execute("""
+                CREATE TABLE concessions.outbox_event (
+                    id             UUID         NOT NULL DEFAULT gen_random_uuid(),
+                    aggregate_type VARCHAR(100) NOT NULL,
+                    aggregate_id   UUID         NOT NULL,
+                    event_type     VARCHAR(100) NOT NULL,
+                    payload        JSONB        NOT NULL,
+                    created_at     TIMESTAMPTZ  NOT NULL DEFAULT now(),
+                    CONSTRAINT pk_concessions_outbox_event PRIMARY KEY (id)
                 )
                 """);
         jdbc.execute("CREATE SCHEMA booking");
@@ -76,6 +89,20 @@ final class PostgresSupport {
                 + "\",\"payload\":{\"userId\":\"" + user + "\"}}";
         jdbc.update("INSERT INTO auth.outbox_event (id, aggregate_type, aggregate_id, event_type, payload, "
                 + "created_at) VALUES (?, 'User', ?, ?, ?::jsonb, ?::timestamptz)", id, user, eventType, envelope, createdAt);
+        return id;
+    }
+
+    /** A row of the concessions outbox the way {@code csp-concessions-api} writes it (ADR-045): a traced envelope. */
+    static java.util.UUID insertConcessionsEvent(JdbcTemplate jdbc, String eventType, String createdAt) {
+        java.util.UUID id = java.util.UUID.randomUUID();
+        java.util.UUID order = java.util.UUID.randomUUID();
+        String envelope = "{\"eventId\":\"" + id + "\",\"eventType\":\"" + eventType + "\",\"aggregateId\":\"" + order
+                + "\",\"aggregateType\":\"ConcessionOrder\",\"occurredAt\":\"" + createdAt + "\",\"version\":1,"
+                + "\"source\":\"concessions-service\",\"payload\":{\"orderId\":\"" + order + "\"},"
+                + "\"metadata\":{\"correlationId\":\"corr-1\"}}";
+        jdbc.update("INSERT INTO concessions.outbox_event (id, aggregate_type, aggregate_id, event_type, payload, "
+                + "created_at) VALUES (?, 'ConcessionOrder', ?, ?, ?::jsonb, ?::timestamptz)", id, order, eventType,
+                envelope, createdAt);
         return id;
     }
 

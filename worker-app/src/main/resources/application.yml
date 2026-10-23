@@ -59,6 +59,12 @@ worker:
     interval-seconds: ${EXPIRE_CONCESSIONS_ORDERS_EVERY:60}
     batch-size: ${EXPIRE_CONCESSIONS_ORDERS_BATCH_SIZE:100}
     run-timeout-seconds: ${EXPIRE_CONCESSIONS_ORDERS_RUN_TIMEOUT:60}
+  # Publishes the concessions outbox (ADR-019, ADR-045) with the login and broker above. Off until the consumers exist.
+  # Only the listed event types are published: Ticketing is the one consumer, of ConcessionOrderConfirmed.
+  concessions-outbox-relay:
+    enabled: ${CONCESSIONS_OUTBOX_RELAY_ENABLED:false}
+    interval-seconds: ${CONCESSIONS_OUTBOX_RELAY_EVERY:5}
+    event-types: ${CONCESSIONS_OUTBOX_RELAY_EVENT_TYPES:ConcessionOrderConfirmed}
 
 booking:
   api:

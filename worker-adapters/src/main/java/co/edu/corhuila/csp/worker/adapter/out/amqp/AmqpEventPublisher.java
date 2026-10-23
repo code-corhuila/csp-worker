@@ -53,7 +53,7 @@ public class AmqpEventPublisher implements EventPublisher, AutoCloseable {
 
     /** {@code cine.<domain>.<event-type-in-kebab-case>.v<version>}, as {@code events.md} lists them. */
     static String routingKeyOf(RelayDomain domain, String eventType, int version) {
-        String kebab = eventType.replaceAll("([a-z0-9])([A-Z])", "$1-$2").toLowerCase(Locale.ROOT);
+        String kebab = domain.routingName(eventType).replaceAll("([a-z0-9])([A-Z])", "$1-$2").toLowerCase(Locale.ROOT);
         return "cine." + domain.schema() + "." + kebab + ".v" + version;
     }
 

@@ -12,6 +12,7 @@ asks for: expiration sweeps, notifications, reindexation. It exposes no business
 | `purge-auth` | Every 3600s, when enabled | Calls `POST /internal/maintenance/purge` on the identity service in batches of up to 500 rows until it reports no more, or the run is out of time (60s) or calls (100) (HU-AUTH-002, [ADR-030](https://github.com/code-corhuila/csp-docs/blob/main/05-architecture/decisions/records/ADR-030-auth-retention-and-purge.md)) |
 | `outbox-relay` | Every 5s, when enabled | Publishes the events the booking API wrote to `booking.outbox_event` to RabbitMQ, with at-least-once delivery ([ADR-014](https://github.com/code-corhuila/csp-docs/blob/main/05-architecture/decisions/records/ADR-014-booking-outbox-relay-read-only.md)) |
 | `auth-outbox-relay` | Every 5s, when enabled | Publishes the events of `auth.outbox_event` that have a consumer to RabbitMQ, with the same delivery semantics ([ADR-019](https://github.com/code-corhuila/csp-docs/blob/main/05-architecture/decisions/records/ADR-019-outbox-relay-read-only-for-other-domains.md)) |
+| `concessions-outbox-relay` | Every 5s, when enabled | Publishes the events of `concessions.outbox_event` that have a consumer to RabbitMQ, with the same delivery semantics ([ADR-019](https://github.com/code-corhuila/csp-docs/blob/main/05-architecture/decisions/records/ADR-019-outbox-relay-read-only-for-other-domains.md), [ADR-045](https://github.com/code-corhuila/csp-docs/blob/main/05-architecture/decisions/records/ADR-045-concessions-orders-stock-holds-and-reservation-events.md)) |
 | `concessions-reservation-events` | Every 5s, when enabled | Takes `BookingConfirmed` and `ReservationExpired` from the queues of Concessions and calls `POST /internal/orders/by-reservation/{reservationId}/confirm` or `.../release` on the concessions service, so the order of a reservation is confirmed or released when the reservation is (HU-CONCESSIONS-004, [ADR-045](https://github.com/code-corhuila/csp-docs/blob/main/05-architecture/decisions/records/ADR-045-concessions-orders-stock-holds-and-reservation-events.md)) |
 | `expire-concessions-orders` | Every 60s, when enabled | Calls `POST /internal/orders/expire` on the concessions service in batches of up to 100 orders until it reports no more, or the run is out of time (60s) or calls (100): it releases the orders without a reservation whose `ORDER_HOLD_MINUTES` ran out (HU-CONCESSIONS-004, [ADR-045](https://github.com/code-corhuila/csp-docs/blob/main/05-architecture/decisions/records/ADR-045-concessions-orders-stock-holds-and-reservation-events.md)) |
 
@@ -57,6 +58,21 @@ It has its own flag, its own PostgreSQL advisory lock and its own broker connect
 - One relay instance per environment: the lock of the auth relay is separate from the booking one, and an instance that does not get it skips the run.
   It needs the migration of `db/` like the booking relay, and the same `RELAY_*` variables.
 
+### Concessions outbox relay
+
+Same relay, reading `concessions.outbox_event` (role `concessions_outbox_reader`, granted by `csp-concessions-db` to `worker_app`), with its own publication
+state key (`concessions`), its own PostgreSQL advisory lock and its own broker connection. Delivery is at-least-once, with the same envelope check, backoff and
+permanent failures; an unroutable message is a permanent failure.
+
+- **Off by default** (`CONCESSIONS_OUTBOX_RELAY_ENABLED=false`). **Do not turn it on before the consumers exist**: `csp-ticketing-api` has to declare its queue for
+  `cine.concessions.order-confirmed.v1` first, otherwise every event is unroutable and fails for good.
+- **Only events with a consumer are published.** `CONCESSIONS_OUTBOX_RELAY_EVENT_TYPES` lists the event types, `ConcessionOrderConfirmed` by default (the one Ticketing
+  consumes). `ConcessionOrderCreated`, `ConcessionStockReserved` and `ConcessionOrderCancelled` have no consumer yet: add them when they have one, with no code change.
+  A name that is not an event of the concessions `events.md` stops the startup.
+- **Routing keys** are `cine.concessions.order-created.v1`, `stock-reserved`, `order-confirmed` and `order-cancelled`: the key drops the word "Concession" of the event type.
+- The envelope has `source` `concessions-service`, `aggregateType` `ConcessionOrder` and the correlation id of the request in `metadata`, so the relay requires them.
+- The relay does not guarantee the publication order of the events of the same batch: consumers must not depend on it. One relay instance per environment, enforced by the lock.
+
 ### Reservation events of Concessions
 
 Off by default (`CONCESSIONS_EVENTS_ENABLED=false`). A run takes up to `CONCESSIONS_EVENTS_BATCH_SIZE` messages (100) in at most
@@ -89,7 +105,7 @@ The worker is the home of every background process (Norma 4.3), and its jobs are
 They live together under three rules that the code already follows:
 
 1. **One job, one flag, one thread.** Each job is a `ScheduledJob` with its own interval and its own thread, and it exists
-   only when its flag is on (`EXPIRE_HOLDS_ENABLED`, `PURGE_AUTH_ENABLED`, `OUTBOX_RELAY_ENABLED`, `AUTH_OUTBOX_RELAY_ENABLED`, `CONCESSIONS_EVENTS_ENABLED`, `EXPIRE_CONCESSIONS_ORDERS_ENABLED`, and the one of the next job). A slow job
+   only when its flag is on (`EXPIRE_HOLDS_ENABLED`, `PURGE_AUTH_ENABLED`, `OUTBOX_RELAY_ENABLED`, `AUTH_OUTBOX_RELAY_ENABLED`, `CONCESSIONS_OUTBOX_RELAY_ENABLED`, `CONCESSIONS_EVENTS_ENABLED`, `EXPIRE_CONCESSIONS_ORDERS_ENABLED`, and the one of the next job). A slow job
    never delays the others, and an instance without `expire-holds` or `purge-auth` needs no `SERVICE_TOKEN`.
 2. **Same pattern for every job.** Ports in the core, adapters outside, a bound per run (Norma 5.7), retries with backoff
    and an idempotent effect, so a duplicate delivery is harmless. A new job reuses this pattern; it does not invent a new one.
@@ -136,6 +152,9 @@ that carries `BookingConfirmed` from Booking to the broker, so that flow has a w
 | `EXPIRE_CONCESSIONS_ORDERS_EVERY` | Scheduler interval in seconds of `expire-concessions-orders` | `60` |
 | `EXPIRE_CONCESSIONS_ORDERS_BATCH_SIZE` | Orders asked per call, from 1 to 500; the worker refuses to start otherwise | `100` |
 | `EXPIRE_CONCESSIONS_ORDERS_RUN_TIMEOUT` | Seconds a run may keep calling before it stops | `60` |
+| `CONCESSIONS_OUTBOX_RELAY_ENABLED` | Turns the concessions outbox relay on; it needs the same database and broker variables, and the consumer of Ticketing declared first | `false` |
+| `CONCESSIONS_OUTBOX_RELAY_EVERY` | Scheduler interval in seconds of `concessions-outbox-relay` | `5` |
+| `CONCESSIONS_OUTBOX_RELAY_EVENT_TYPES` | Comma-separated concessions event types to publish: `ConcessionOrderCreated`, `ConcessionStockReserved`, `ConcessionOrderConfirmed`, `ConcessionOrderCancelled` | `ConcessionOrderConfirmed` |
 | `CONCESSIONS_EVENTS_ENABLED` | Turns the settlement of the orders of the reservations on; it needs `CONCESSIONS_AMQP_URL` and the service token | `false` |
 | `CONCESSIONS_EVENTS_EVERY` | Scheduler interval in seconds of `concessions-reservation-events` | `5` |
 | `CONCESSIONS_EVENTS_BATCH_SIZE` | Messages a run may take, at least 1 | `100` |
