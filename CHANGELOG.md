@@ -8,6 +8,10 @@ and is tagged `v<version>` once it is merged.
 
 ## [Unreleased]
 
+### Fixed
+
+- The outbox relays no longer declare the exchange (HU-AUTH-004, ADR-036): the login `worker_relay` has `configure ^$`, so the declaration was refused and nothing was published. `AmqpEventPublisher` now checks that the exchange exists with a passive declaration and publishes; a missing exchange is a retryable failure that logs its name (no credential), reopens the connection and recovers when the exchange appears. An AMQP URL with an empty virtual host (ending in a bare `/`) stops the startup with a message that asks for `/%2F`.
+
 ### Added
 
 - Outbox relay of Concessions (HU-CONCESSIONS-004, ADR-019, ADR-045): `concessions-outbox-relay` publishes `concessions.outbox_event` to `cine.events` with the same at-least-once, backoff and permanent-failure rules, its own state key, lock and connection, and only the event types of `CONCESSIONS_OUTBOX_RELAY_EVENT_TYPES` (`ConcessionOrderConfirmed` by default, the one Ticketing consumes). The routing key drops the word "Concession" of the event type (`cine.concessions.order-confirmed.v1`). Off by default (`CONCESSIONS_OUTBOX_RELAY_ENABLED`).

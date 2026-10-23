@@ -10,6 +10,7 @@ import com.rabbitmq.client.AMQP;
 import com.rabbitmq.client.Channel;
 import com.rabbitmq.client.Connection;
 import com.rabbitmq.client.ConnectionFactory;
+import com.rabbitmq.client.ShutdownSignalException;
 import jakarta.annotation.PreDestroy;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -19,6 +20,8 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicReference;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Publishes the events of one domain to RabbitMQ the way ADR-014 asks: persistent delivery, publisher
@@ -27,11 +30,16 @@ import java.util.concurrent.atomic.AtomicReference;
  * written; the relay never builds a new one.
  *
  * <p>A confirm that does not arrive, a nack or a lost connection is transient: the connection is
- * dropped and opened again on the next call. A message returned as unroutable is permanent: no
+ * dropped and opened again on the next call. The exchange belongs to {@code csp-infra-rabbitmq} (ADR-036) and the
+ * login of the relay cannot declare anything, so the publisher only checks that it exists (a passive
+ * declaration); one that does not exist is a transient failure too, because it is a configuration the
+ * operator fixes and the relay recovers from by itself. A message returned as unroutable is permanent: no
  * queue is bound to its routing key, and publishing it again cannot change that.
  */
 public class AmqpEventPublisher implements EventPublisher, AutoCloseable {
 
+    private static final Logger log = LoggerFactory.getLogger(AmqpEventPublisher.class);
+    private static final int NOT_FOUND = 404;
     private static final String CORRELATION_HEADER = "X-Correlation-Id";
 
     private final ObjectMapper mapper = new ObjectMapper();
@@ -45,6 +53,10 @@ public class AmqpEventPublisher implements EventPublisher, AutoCloseable {
 
     public AmqpEventPublisher(ConnectionFactory factory, String exchange, Duration confirmTimeout,
             RelayDomain domain) {
+        if (factory.getVirtualHost().isEmpty()) {
+            throw new IllegalArgumentException("the AMQP URL has an empty virtual host; the default one is written "
+                    + "with its slash encoded, as in amqp://user:password@host:5672/%2F");
+        }
         this.factory = factory;
         this.exchange = exchange;
         this.domain = domain;
@@ -74,6 +86,8 @@ public class AmqpEventPublisher implements EventPublisher, AutoCloseable {
             current.basicPublish(exchange, routingKey, true, properties,
                     event.envelope().getBytes(StandardCharsets.UTF_8));
             current.waitForConfirmsOrDie(confirmTimeoutMillis);
+        } catch (PublishException exception) {
+            throw exception;
         } catch (IOException | TimeoutException | InterruptedException | RuntimeException exception) {
             if (exception instanceof InterruptedException) {
                 Thread.currentThread().interrupt();
@@ -112,9 +126,30 @@ public class AmqpEventPublisher implements EventPublisher, AutoCloseable {
         connection = factory.newConnection("csp-worker-" + domain.schema() + "-outbox-relay");
         channel = connection.createChannel();
         channel.confirmSelect();
-        channel.exchangeDeclare(exchange, "topic", true);
+        verifyExchange();
         channel.addReturnListener(message -> returned.set(message.getRoutingKey()));
         return channel;
+    }
+
+    /** The relay may not declare the exchange: it checks it, which needs no permission of the login. */
+    private void verifyExchange() {
+        try {
+            channel.exchangeDeclarePassive(exchange);
+        } catch (IOException exception) {
+            disconnect();
+            if (isNotFound(exception)) {
+                log.error("the exchange {} does not exist on the broker: create it with csp-infra-rabbitmq (ADR-036); "
+                        + "the relay retries on its next run", exchange);
+                throw PublishException.transientFailure("the exchange '" + exchange + "' does not exist on the broker",
+                        exception);
+            }
+            throw PublishException.transientFailure("the exchange '" + exchange + "' could not be checked", exception);
+        }
+    }
+
+    private static boolean isNotFound(IOException exception) {
+        return exception.getCause() instanceof ShutdownSignalException signal
+                && signal.getReason() instanceof AMQP.Channel.Close close && close.getReplyCode() == NOT_FOUND;
     }
 
     private void disconnect() {
