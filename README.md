@@ -13,6 +13,7 @@ asks for: expiration sweeps, notifications, reindexation. It exposes no business
 | `outbox-relay` | Every 5s, when enabled | Publishes the events the booking API wrote to `booking.outbox_event` to RabbitMQ, with at-least-once delivery ([ADR-014](https://github.com/code-corhuila/csp-docs/blob/main/05-architecture/decisions/records/ADR-014-booking-outbox-relay-read-only.md)) |
 | `auth-outbox-relay` | Every 5s, when enabled | Publishes the events of `auth.outbox_event` that have a consumer to RabbitMQ, with the same delivery semantics ([ADR-019](https://github.com/code-corhuila/csp-docs/blob/main/05-architecture/decisions/records/ADR-019-outbox-relay-read-only-for-other-domains.md)) |
 | `concessions-reservation-events` | Every 5s, when enabled | Takes `BookingConfirmed` and `ReservationExpired` from the queues of Concessions and calls `POST /internal/orders/by-reservation/{reservationId}/confirm` or `.../release` on the concessions service, so the order of a reservation is confirmed or released when the reservation is (HU-CONCESSIONS-004, [ADR-045](https://github.com/code-corhuila/csp-docs/blob/main/05-architecture/decisions/records/ADR-045-concessions-orders-stock-holds-and-reservation-events.md)) |
+| `expire-concessions-orders` | Every 60s, when enabled | Calls `POST /internal/orders/expire` on the concessions service in batches of up to 100 orders until it reports no more, or the run is out of time (60s) or calls (100): it releases the orders without a reservation whose `ORDER_HOLD_MINUTES` ran out (HU-CONCESSIONS-004, [ADR-045](https://github.com/code-corhuila/csp-docs/blob/main/05-architecture/decisions/records/ADR-045-concessions-orders-stock-holds-and-reservation-events.md)) |
 
 ### Outbox relay
 
@@ -88,7 +89,7 @@ The worker is the home of every background process (Norma 4.3), and its jobs are
 They live together under three rules that the code already follows:
 
 1. **One job, one flag, one thread.** Each job is a `ScheduledJob` with its own interval and its own thread, and it exists
-   only when its flag is on (`EXPIRE_HOLDS_ENABLED`, `PURGE_AUTH_ENABLED`, `OUTBOX_RELAY_ENABLED`, `AUTH_OUTBOX_RELAY_ENABLED`, `CONCESSIONS_EVENTS_ENABLED`, and the one of the next job). A slow job
+   only when its flag is on (`EXPIRE_HOLDS_ENABLED`, `PURGE_AUTH_ENABLED`, `OUTBOX_RELAY_ENABLED`, `AUTH_OUTBOX_RELAY_ENABLED`, `CONCESSIONS_EVENTS_ENABLED`, `EXPIRE_CONCESSIONS_ORDERS_ENABLED`, and the one of the next job). A slow job
    never delays the others, and an instance without `expire-holds` or `purge-auth` needs no `SERVICE_TOKEN`.
 2. **Same pattern for every job.** Ports in the core, adapters outside, a bound per run (Norma 5.7), retries with backoff
    and an idempotent effect, so a duplicate delivery is harmless. A new job reuses this pattern; it does not invent a new one.
@@ -131,6 +132,10 @@ that carries `BookingConfirmed` from Booking to the broker, so that flow has a w
 | `AUTH_OUTBOX_RELAY_ENABLED` | Turns the auth outbox relay on; it needs the same database and broker variables, and the consumers of Ticketing declared first | `false` |
 | `AUTH_OUTBOX_RELAY_EVERY` | Scheduler interval in seconds of `auth-outbox-relay` | `5` |
 | `AUTH_OUTBOX_RELAY_EVENT_TYPES` | Comma-separated auth event types to publish: `UserRegistered`, `UserEmailChanged`, `UserRoleChanged` | `UserRegistered,UserEmailChanged` |
+| `EXPIRE_CONCESSIONS_ORDERS_ENABLED` | Turns the sweep of the orders of Concessions on; it needs `CONCESSIONS_API_URL` and the service token | `false` |
+| `EXPIRE_CONCESSIONS_ORDERS_EVERY` | Scheduler interval in seconds of `expire-concessions-orders` | `60` |
+| `EXPIRE_CONCESSIONS_ORDERS_BATCH_SIZE` | Orders asked per call, from 1 to 500; the worker refuses to start otherwise | `100` |
+| `EXPIRE_CONCESSIONS_ORDERS_RUN_TIMEOUT` | Seconds a run may keep calling before it stops | `60` |
 | `CONCESSIONS_EVENTS_ENABLED` | Turns the settlement of the orders of the reservations on; it needs `CONCESSIONS_AMQP_URL` and the service token | `false` |
 | `CONCESSIONS_EVENTS_EVERY` | Scheduler interval in seconds of `concessions-reservation-events` | `5` |
 | `CONCESSIONS_EVENTS_BATCH_SIZE` | Messages a run may take, at least 1 | `100` |
