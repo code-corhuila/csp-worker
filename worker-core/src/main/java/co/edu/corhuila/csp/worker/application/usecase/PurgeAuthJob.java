@@ -6,8 +6,6 @@ import co.edu.corhuila.csp.worker.application.port.out.AuthMaintenanceApi;
 import co.edu.corhuila.csp.worker.application.port.out.PurgeResult;
 import java.time.Clock;
 import java.time.Duration;
-import java.time.Instant;
-import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -23,7 +21,7 @@ public class PurgeAuthJob implements Job {
 
     /** The maximum batch size of the contract of {@code /internal/maintenance/purge}. */
     static final int MAX_BATCH_SIZE = 500;
-    static final int MAX_CALLS_PER_RUN = 100;
+    static final int MAX_CALLS_PER_RUN = DrainLoop.MAX_CALLS_PER_RUN;
 
     private static final Logger log = LoggerFactory.getLogger(PurgeAuthJob.class);
 
@@ -47,28 +45,10 @@ public class PurgeAuthJob implements Job {
 
     @Override
     public JobResult run() {
-        String correlationId = UUID.randomUUID().toString();
-        Instant deadline = clock.instant().plus(runTimeout);
-        int processed = 0;
-        int calls = 0;
-        boolean hasMore = true;
-        while (hasMore && calls < MAX_CALLS_PER_RUN && clock.instant().isBefore(deadline)) {
-            calls++;
-            PurgeResult result;
-            try {
-                result = authApi.purge(correlationId, batchSize);
-            } catch (Exception exception) {
-                log.error("purge failed: processed={}, calls={}, correlationId={}", processed, calls,
-                        correlationId, exception);
-                return new JobResult(processed, 1);
-            }
-            processed += result.processedCount();
-            // A service that reports more but handled nothing would be called until the cap for no gain.
-            hasMore = result.hasMore() && result.processedCount() > 0;
-        }
-        log.info("purge completed: processed={}, calls={}, moreRemain={}, correlationId={}", processed, calls,
-                hasMore, correlationId);
-        return new JobResult(processed, 0);
+        return DrainLoop.run("purge", (correlationId, size) -> {
+            PurgeResult result = authApi.purge(correlationId, size);
+            return new DrainLoop.Progress(result.processedCount(), result.hasMore());
+        }, batchSize, runTimeout, clock, log);
     }
 
     @Override
