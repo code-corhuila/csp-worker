@@ -34,6 +34,9 @@ instances are idle: do not use it to scale the relay.
 
 Before enabling it in a shared environment, the consumers must have declared their queues: a message that no queue is bound
 to is a permanent failure and waits for an operator. The exchange is `cine.events`, fixed by ADR-036 (`csp-infra-rabbitmq`).
+The relay never declares it: its login (`worker_relay`) may only write to it, so the publisher checks that the exchange exists
+(a passive declaration, which needs no permission) and a missing one is a retryable failure, logged with the exchange name, that
+the relay recovers from by itself once the broker has it.
 
 ### Auth outbox relay
 
@@ -113,7 +116,7 @@ that carries `BookingConfirmed` from Booking to the broker, so that flow has a w
 | `AUTH_OUTBOX_RELAY_EVERY` | Scheduler interval in seconds of `auth-outbox-relay` | `5` |
 | `AUTH_OUTBOX_RELAY_EVENT_TYPES` | Comma-separated auth event types to publish: `UserRegistered`, `UserEmailChanged`, `UserRoleChanged` | `UserRegistered,UserEmailChanged` |
 | `RELAY_DATABASE_URL` / `RELAY_DATABASE_USER` / `RELAY_DATABASE_PASSWORD` | PostgreSQL login of the relays (`worker_app`) | user `worker_app` |
-| `RELAY_AMQP_URL` | RabbitMQ URI | required when a relay is on |
+| `RELAY_AMQP_URL` | RabbitMQ URI with the login `worker_relay` (ADR-036). The default virtual host is written `/%2F` (`amqp://worker_relay:<password>@rabbitmq:5672/%2F`): a URL ending in a bare `/` means an empty virtual host and stops the startup | required when a relay is on |
 | `RELAY_AMQP_EXCHANGE` | Topic exchange the events are published to | `cine.events` |
 
 ## Build and run
