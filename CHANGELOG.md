@@ -10,6 +10,7 @@ and is tagged `v<version>` once it is merged.
 
 ### Added
 
+- Reservation events job and Concessions client (HU-CONCESSIONS-004, ADR-045): `ReservationEventsJob` settles the concession order of a reservation from the Booking events `BookingConfirmed` and `ReservationExpired` of a queue port, acknowledging a message only after the service accepted it, sending a refused one to the dead-letter queue and leaving the message in the queue when the service is down; `ConcessionsOrdersClient` calls `POST /internal/orders/by-reservation/{reservationId}/confirm` and `.../release` with the service token and the correlation id of the run. `RetryingHttp` now accepts any `2xx` and reports the status of a failure. Not composed yet: the queue adapter and the flag come in the next pull request.
 - `deploy/compose.yml` passes `AUTH_OUTBOX_RELAY_ENABLED` (off), `AUTH_OUTBOX_RELAY_EVERY` and `AUTH_OUTBOX_RELAY_EVENT_TYPES` with the defaults of the application (code-corhuila/csp-worker#30).
 - Outbox relay of auth (ADR-019): `auth-outbox-relay` publishes `auth.outbox_event` to `cine.events` with the same at-least-once, backoff and
   permanent-failure semantics as the booking relay, with its own state key (`source` `auth`), advisory lock and broker connection. Off by default

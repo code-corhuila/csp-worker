@@ -29,9 +29,9 @@ public class RetryingHttp {
     }
 
     /**
-     * @return the body of the 200 answer
-     * @throws IllegalStateException when the service is unreachable, answers a status that is not
-     *     worth retrying, or keeps failing after the last attempt
+     * @return the body of the answer, which is empty for a {@code 204}
+     * @throws Failure when the service is unreachable, answers a status that is not worth
+     *     retrying, or keeps failing after the last attempt
      */
     public String send(HttpRequest request) {
         for (int attempt = 1; ; attempt++) {
@@ -40,7 +40,7 @@ public class RetryingHttp {
                 response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
             } catch (IOException exception) {
                 if (attempt == MAX_ATTEMPTS) {
-                    throw new IllegalStateException("the " + service + " is unreachable", exception);
+                    throw new Failure("the " + service + " is unreachable", 0, exception);
                 }
                 backOff(attempt, "network error");
                 continue;
@@ -49,7 +49,7 @@ public class RetryingHttp {
                 throw new IllegalStateException("interrupted while calling the " + service, exception);
             }
             int status = response.statusCode();
-            if (status == 200) {
+            if (status >= 200 && status < 300) {
                 return response.body();
             }
             if ((status == 429 || status >= 500) && attempt < MAX_ATTEMPTS) {
@@ -60,7 +60,26 @@ public class RetryingHttp {
                 log.error("the {} refused the service token (status {}): it may have expired or its"
                         + " subject is not allowed; replace the secret of the worker", service, status);
             }
-            throw new IllegalStateException("the " + service + " answered " + status);
+            throw new Failure("the " + service + " answered " + status, status, null);
+        }
+    }
+
+    /**
+     * A call that did not end in a success. {@code status} is the HTTP status of the last answer, or
+     * {@code 0} when the service never answered. It stays an {@link IllegalStateException} for the callers
+     * that only need to know that the call failed.
+     */
+    public static class Failure extends IllegalStateException {
+
+        private final int status;
+
+        Failure(String message, int status, Throwable cause) {
+            super(message, cause);
+            this.status = status;
+        }
+
+        public int status() {
+            return status;
         }
     }
 
