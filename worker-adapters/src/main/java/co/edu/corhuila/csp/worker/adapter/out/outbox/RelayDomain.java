@@ -15,7 +15,13 @@ public enum RelayDomain {
     BOOKING("booking", "booking-service", 0x6373706F75746278L, true),
 
     /** The auth outbox, ADR-019. The lock key is the ASCII of "cspoutba". */
-    AUTH("auth", "auth-service", 0x6373706F75746261L, false);
+    AUTH("auth", "auth-service", 0x6373706F75746261L, false),
+
+    /**
+     * The concessions outbox, ADR-019 and ADR-045. The lock key is the ASCII of "cspoutbc". Its envelope is the
+     * traced one of booking.
+     */
+    CONCESSIONS("concessions", "concessions-service", 0x6373706F75746263L, true);
 
     private final String schema;
     private final String envelopeSource;
@@ -37,6 +43,15 @@ public enum RelayDomain {
     /** The value of {@code source} an envelope of this domain must carry. */
     public String envelopeSource() {
         return envelopeSource;
+    }
+
+    /**
+     * The event type as the routing key spells it: the {@code events.md} of Concessions names the keys
+     * {@code order-confirmed} and {@code stock-reserved}, without the word of {@code ConcessionOrderConfirmed}.
+     */
+    public String routingName(String eventType) {
+        String prefix = "Concession";
+        return this == CONCESSIONS && eventType.startsWith(prefix) ? eventType.substring(prefix.length()) : eventType;
     }
 
     public long lockKey() {
