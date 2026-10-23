@@ -12,6 +12,7 @@ asks for: expiration sweeps, notifications, reindexation. It exposes no business
 | `purge-auth` | Every 3600s, when enabled | Calls `POST /internal/maintenance/purge` on the identity service in batches of up to 500 rows until it reports no more, or the run is out of time (60s) or calls (100) (HU-AUTH-002, [ADR-030](https://github.com/code-corhuila/csp-docs/blob/main/05-architecture/decisions/records/ADR-030-auth-retention-and-purge.md)) |
 | `outbox-relay` | Every 5s, when enabled | Publishes the events the booking API wrote to `booking.outbox_event` to RabbitMQ, with at-least-once delivery ([ADR-014](https://github.com/code-corhuila/csp-docs/blob/main/05-architecture/decisions/records/ADR-014-booking-outbox-relay-read-only.md)) |
 | `auth-outbox-relay` | Every 5s, when enabled | Publishes the events of `auth.outbox_event` that have a consumer to RabbitMQ, with the same delivery semantics ([ADR-019](https://github.com/code-corhuila/csp-docs/blob/main/05-architecture/decisions/records/ADR-019-outbox-relay-read-only-for-other-domains.md)) |
+| `concessions-reservation-events` | Every 5s, when enabled | Takes `BookingConfirmed` and `ReservationExpired` from the queues of Concessions and calls `POST /internal/orders/by-reservation/{reservationId}/confirm` or `.../release` on the concessions service, so the order of a reservation is confirmed or released when the reservation is (HU-CONCESSIONS-004, [ADR-045](https://github.com/code-corhuila/csp-docs/blob/main/05-architecture/decisions/records/ADR-045-concessions-orders-stock-holds-and-reservation-events.md)) |
 
 ### Outbox relay
 
@@ -55,6 +56,24 @@ It has its own flag, its own PostgreSQL advisory lock and its own broker connect
 - One relay instance per environment: the lock of the auth relay is separate from the booking one, and an instance that does not get it skips the run.
   It needs the migration of `db/` like the booking relay, and the same `RELAY_*` variables.
 
+### Reservation events of Concessions
+
+Off by default (`CONCESSIONS_EVENTS_ENABLED=false`). A run takes up to `CONCESSIONS_EVENTS_BATCH_SIZE` messages (100) in at most
+`CONCESSIONS_EVENTS_RUN_TIMEOUT` seconds (20), one at a time, and acknowledges each only after the concessions service accepted it. The
+service answers `204` also when the reservation has no order or the order is already in that state, so a repeated message, or a crash between
+the call and the acknowledgement, is harmless (no inbox is needed for this job).
+
+- **Queues.** At start the job declares, with the broker login of Concessions (`CONCESSIONS_AMQP_URL`, user `concessions` of ADR-036, not the
+  publishing login of the relays), `cine.concessions.booking-confirmed` and `cine.concessions.reservation-expired`, bound to `cine.events` by
+  `cine.booking.booking-confirmed.v1` and `cine.booking.reservation-expired.v1`, each with a dead-letter queue (`.dlq`) bound to `cine.dlx`. The exchanges
+  are only checked: `csp-infra-rabbitmq` creates them.
+- **Failures.** A message the service refuses for good (`400`, `404`, or a `409` because the order is already in the opposite final state) or that is not
+  a reservation event goes to the dead-letter queue and the batch continues. When the service cannot be reached, is busy or refuses the token (`401`,
+  `403`: the secret of the worker is wrong, not the message), the message goes back to the queue and the run stops. The calls follow the same bounded
+  retry with backoff and full jitter as the other clients; a `4xx` is never retried.
+- It needs `SERVICE_TOKEN` or `SERVICE_TOKEN_FILE` like the other jobs that call a service, and the token's subject must be in `SERVICE_SUBJECTS` of the concessions service.
+- **Do not turn it on before the broker exists.** An order tied to a reservation is settled only by this job (or by the client cancelling it).
+
 ### Light jobs and heavy jobs in one worker
 
 The worker is the home of every background process (Norma 4.3), and its jobs are not all alike:
@@ -69,7 +88,7 @@ The worker is the home of every background process (Norma 4.3), and its jobs are
 They live together under three rules that the code already follows:
 
 1. **One job, one flag, one thread.** Each job is a `ScheduledJob` with its own interval and its own thread, and it exists
-   only when its flag is on (`EXPIRE_HOLDS_ENABLED`, `PURGE_AUTH_ENABLED`, `OUTBOX_RELAY_ENABLED`, `AUTH_OUTBOX_RELAY_ENABLED`, and the one of the next job). A slow job
+   only when its flag is on (`EXPIRE_HOLDS_ENABLED`, `PURGE_AUTH_ENABLED`, `OUTBOX_RELAY_ENABLED`, `AUTH_OUTBOX_RELAY_ENABLED`, `CONCESSIONS_EVENTS_ENABLED`, and the one of the next job). A slow job
    never delays the others, and an instance without `expire-holds` or `purge-auth` needs no `SERVICE_TOKEN`.
 2. **Same pattern for every job.** Ports in the core, adapters outside, a bound per run (Norma 5.7), retries with backoff
    and an idempotent effect, so a duplicate delivery is harmless. A new job reuses this pattern; it does not invent a new one.
@@ -112,6 +131,13 @@ that carries `BookingConfirmed` from Booking to the broker, so that flow has a w
 | `AUTH_OUTBOX_RELAY_ENABLED` | Turns the auth outbox relay on; it needs the same database and broker variables, and the consumers of Ticketing declared first | `false` |
 | `AUTH_OUTBOX_RELAY_EVERY` | Scheduler interval in seconds of `auth-outbox-relay` | `5` |
 | `AUTH_OUTBOX_RELAY_EVENT_TYPES` | Comma-separated auth event types to publish: `UserRegistered`, `UserEmailChanged`, `UserRoleChanged` | `UserRegistered,UserEmailChanged` |
+| `CONCESSIONS_EVENTS_ENABLED` | Turns the settlement of the orders of the reservations on; it needs `CONCESSIONS_AMQP_URL` and the service token | `false` |
+| `CONCESSIONS_EVENTS_EVERY` | Scheduler interval in seconds of `concessions-reservation-events` | `5` |
+| `CONCESSIONS_EVENTS_BATCH_SIZE` | Messages a run may take, at least 1 | `100` |
+| `CONCESSIONS_EVENTS_RUN_TIMEOUT` | Seconds a run may keep taking messages before it stops | `20` |
+| `CONCESSIONS_API_URL` | Concessions service internal URL | `http://concessions-api:8085/api/v1/concessions` |
+| `CONCESSIONS_AMQP_URL` | RabbitMQ URI with the login of Concessions (`concessions`, ADR-036) | required when the job is on |
+| `CONCESSIONS_AMQP_EXCHANGE` / `CONCESSIONS_AMQP_DEAD_LETTER_EXCHANGE` | Events exchange and dead-letter exchange, checked at start | `cine.events` / `cine.dlx` |
 | `RELAY_DATABASE_URL` / `RELAY_DATABASE_USER` / `RELAY_DATABASE_PASSWORD` | PostgreSQL login of the relays (`worker_app`) | user `worker_app` |
 | `RELAY_AMQP_URL` | RabbitMQ URI | required when a relay is on |
 | `RELAY_AMQP_EXCHANGE` | Topic exchange the events are published to | `cine.events` |
