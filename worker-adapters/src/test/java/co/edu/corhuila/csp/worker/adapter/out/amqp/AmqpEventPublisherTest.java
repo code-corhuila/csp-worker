@@ -61,6 +61,26 @@ class AmqpEventPublisherTest {
         assertFalse(failure.isPermanent());
     }
 
+    @Test
+    void aUrlThatEndsInASlashHasAnEmptyVirtualHostAndStopsTheStartup() throws Exception {
+        ConnectionFactory factory = new ConnectionFactory();
+        factory.setUri(URI.create("amqp://relay:secret@rabbitmq:5672/"));
+
+        IllegalArgumentException failure = assertThrows(IllegalArgumentException.class,
+                () -> new AmqpEventPublisher(factory, EXCHANGE, Duration.ofSeconds(2), RelayDomain.AUTH));
+
+        assertTrue(failure.getMessage().contains("/%2F"));
+        assertFalse(failure.getMessage().contains("secret"));
+    }
+
+    @Test
+    void theDefaultVirtualHostWrittenAsPercentTwoFIsAccepted() throws Exception {
+        ConnectionFactory factory = new ConnectionFactory();
+        factory.setUri(URI.create("amqp://relay:secret@rabbitmq:5672/%2F"));
+
+        new AmqpEventPublisher(factory, EXCHANGE, Duration.ofSeconds(2), RelayDomain.AUTH).close();
+    }
+
     @Nested
     @EnabledIfEnvironmentVariable(named = "TEST_AMQP_URL", matches = ".+")
     class WithBroker {
@@ -113,6 +133,41 @@ class AmqpEventPublisherTest {
                     () -> publisher.publish(event("ReservationExpired", 1), "corr-1"));
 
             assertTrue(failure.isPermanent());
+        }
+
+        @Test
+        void anExchangeThatDoesNotExistIsATransientFailureThatNamesItAndIsNotCreated() {
+            String missing = "cine.events.missing";
+            AmqpEventPublisher lonely = new AmqpEventPublisher(factory, missing, Duration.ofSeconds(5),
+                    RelayDomain.BOOKING);
+
+            PublishException failure = assertThrows(PublishException.class,
+                    () -> lonely.publish(event("ReservationHeld", 1), "corr-1"));
+
+            assertFalse(failure.isPermanent());
+            assertTrue(failure.getMessage().contains(missing));
+            assertThrows(java.io.IOException.class, () -> {
+                try (Connection probe = factory.newConnection("test-probe")) {
+                    probe.createChannel().exchangeDeclarePassive(missing);
+                }
+            });
+            lonely.close();
+        }
+
+        @Test
+        void thePublisherPublishesAsSoonAsTheMissingExchangeAppears() throws Exception {
+            String late = "cine.events.late";
+            AmqpEventPublisher waiting = new AmqpEventPublisher(factory, late, Duration.ofSeconds(5),
+                    RelayDomain.BOOKING);
+            assertThrows(PublishException.class, () -> waiting.publish(event("ReservationHeld", 1), "corr-1"));
+            consumer.exchangeDeclare(late, "topic", true);
+            consumer.queueBind("relay.test", late, "cine.booking.reservation-held.v1");
+
+            waiting.publish(event("ReservationHeld", 1), "corr-2");
+
+            assertNotNull(consumer.basicGet("relay.test", true));
+            waiting.close();
+            consumer.exchangeDelete(late);
         }
 
         @Test

@@ -8,6 +8,10 @@ and is tagged `v<version>` once it is merged.
 
 ## [Unreleased]
 
+### Fixed
+
+- The outbox relays no longer declare the exchange (HU-AUTH-004, ADR-036): the login `worker_relay` has `configure ^$`, so the declaration was refused and nothing was published. `AmqpEventPublisher` now checks that the exchange exists with a passive declaration and publishes; a missing exchange is a retryable failure that logs its name (no credential), reopens the connection and recovers when the exchange appears. An AMQP URL with an empty virtual host (ending in a bare `/`) stops the startup with a message that asks for `/%2F`.
+
 ### Added
 
 - `deploy/compose.yml` passes `AUTH_OUTBOX_RELAY_ENABLED` (off), `AUTH_OUTBOX_RELAY_EVERY` and `AUTH_OUTBOX_RELAY_EVENT_TYPES` with the defaults of the application (code-corhuila/csp-worker#30).
