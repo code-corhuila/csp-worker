@@ -53,6 +53,12 @@ worker:
       url: ${CONCESSIONS_AMQP_URL:}
       exchange: ${CONCESSIONS_AMQP_EXCHANGE:cine.events}
       dead-letter-exchange: ${CONCESSIONS_AMQP_DEAD_LETTER_EXCHANGE:cine.dlx}
+  # Asks the concessions service to release the orders without a reservation whose time ran out (HU-CONCESSIONS-004, ADR-045).
+  expire-concessions-orders:
+    enabled: ${EXPIRE_CONCESSIONS_ORDERS_ENABLED:false}
+    interval-seconds: ${EXPIRE_CONCESSIONS_ORDERS_EVERY:60}
+    batch-size: ${EXPIRE_CONCESSIONS_ORDERS_BATCH_SIZE:100}
+    run-timeout-seconds: ${EXPIRE_CONCESSIONS_ORDERS_RUN_TIMEOUT:60}
 
 booking:
   api:
