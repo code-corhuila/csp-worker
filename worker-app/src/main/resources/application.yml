@@ -66,6 +66,27 @@ worker:
     interval-seconds: ${CONCESSIONS_OUTBOX_RELAY_EVERY:5}
     event-types: ${CONCESSIONS_OUTBOX_RELAY_EVENT_TYPES:ConcessionOrderConfirmed}
 
+# Generates PDF tickets for confirmed bookings (Option B: heavy job in csp-worker).
+  # It consumes BookingConfirmed events, generates PDF+QR, uploads to object storage,
+  # calls ticketing-api internal endpoint, and publishes TicketIssued.
+  generate-ticket-pdf:
+    enabled: ${GENERATE_TICKET_PDF_ENABLED:false}
+    interval-seconds: ${GENERATE_TICKET_PDF_EVERY:30}
+    run-timeout-seconds: ${GENERATE_TICKET_PDF_RUN_TIMEOUT:60}
+    batch-size: ${GENERATE_TICKET_PDF_BATCH_SIZE:10}
+    object-storage:
+      url: ${OBJECT_STORAGE_URL:http://minio:9000}
+      access-key: ${OBJECT_STORAGE_ACCESS_KEY:minioadmin}
+      secret-key: ${OBJECT_STORAGE_SECRET_KEY:minioadmin}
+      bucket: ${OBJECT_STORAGE_BUCKET:tickets}
+    ticketing-api:
+      url: ${TICKETING_API_URL:http://ticketing-api:8084/api/v1/ticketing}
+      timeout-seconds: 10
+    amqp:
+      url: ${RELAY_AMQP_URL:}
+      exchange: ${RELAY_AMQP_EXCHANGE:cine.events}
+      confirm-timeout-seconds: 5
+
 booking:
   api:
     url: ${BOOKING_API_URL:http://booking-api:8083/api/v1/booking}
