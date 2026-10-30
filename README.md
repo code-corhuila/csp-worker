@@ -14,6 +14,7 @@ asks for: expiration sweeps, notifications, reindexation. It exposes no business
 | `auth-outbox-relay` | Every 5s, when enabled | Publishes the events of `auth.outbox_event` that have a consumer to RabbitMQ, with the same delivery semantics ([ADR-019](https://github.com/code-corhuila/csp-docs/blob/main/05-architecture/decisions/records/ADR-019-outbox-relay-read-only-for-other-domains.md)) |
 | `concessions-outbox-relay` | Every 5s, when enabled | Publishes the events of `concessions.outbox_event` that have a consumer to RabbitMQ, with the same delivery semantics ([ADR-019](https://github.com/code-corhuila/csp-docs/blob/main/05-architecture/decisions/records/ADR-019-outbox-relay-read-only-for-other-domains.md), [ADR-045](https://github.com/code-corhuila/csp-docs/blob/main/05-architecture/decisions/records/ADR-045-concessions-orders-stock-holds-and-reservation-events.md)) |
 | `ticketing-outbox-relay` | Every 5s, when enabled | Publishes the `TicketIssued` events of `ticketing_fulfillment.outbox_event` to RabbitMQ, with the same delivery semantics ([ADR-057](https://github.com/code-corhuila/csp-docs/blob/main/05-architecture/decisions/records/ADR-057-ticket-issuance-pdf-in-worker-and-delivery-retry.md)) |
+| `dispatch-ticket-emails` | Every 30s, when enabled | Calls `POST /internal/fulfillments/dispatch` on the ticketing service in batches of up to 100 deliveries until a batch comes back short, or the run is out of time (60s) or calls (100): the service sends the email of each ticket whose PDF exists and whose contact is known, and keeps the others pending with a growing delay (HU-TICKETING-002, [ADR-057](https://github.com/code-corhuila/csp-docs/blob/main/05-architecture/decisions/records/ADR-057-ticket-issuance-pdf-in-worker-and-delivery-retry.md)) |
 | `concessions-reservation-events` | Every 5s, when enabled | Takes `BookingConfirmed` and `ReservationExpired` from the queues of Concessions and calls `POST /internal/orders/by-reservation/{reservationId}/confirm` or `.../release` on the concessions service, so the order of a reservation is confirmed or released when the reservation is (HU-CONCESSIONS-004, [ADR-045](https://github.com/code-corhuila/csp-docs/blob/main/05-architecture/decisions/records/ADR-045-concessions-orders-stock-holds-and-reservation-events.md)) |
 | `expire-concessions-orders` | Every 60s, when enabled | Calls `POST /internal/orders/expire` on the concessions service in batches of up to 100 orders until it reports no more, or the run is out of time (60s) or calls (100): it releases the orders without a reservation whose `ORDER_HOLD_MINUTES` ran out (HU-CONCESSIONS-004, [ADR-045](https://github.com/code-corhuila/csp-docs/blob/main/05-architecture/decisions/records/ADR-045-concessions-orders-stock-holds-and-reservation-events.md)) |
 
@@ -108,6 +109,18 @@ the call and the acknowledgement, is harmless (no inbox is needed for this job).
 - It needs `SERVICE_TOKEN` or `SERVICE_TOKEN_FILE` like the other jobs that call a service, and the token's subject must be in `SERVICE_SUBJECTS` of the concessions service.
 - **Do not turn it on before the broker exists.** An order tied to a reservation is settled only by this job (or by the client cancelling it).
 
+### Ticket email dispatch
+
+Asks the ticketing service to send the emails of the tickets that are ready (HU-TICKETING-002, [ADR-057](https://github.com/code-corhuila/csp-docs/blob/main/05-architecture/decisions/records/ADR-057-ticket-issuance-pdf-in-worker-and-delivery-retry.md)).
+The service resolves the contact of the user when it sends; if the contact is not known yet, or the email fails, it keeps the delivery pending with a growing
+delay (1 minute, then 5) and gives up at the third attempt. Nothing else starts that retry, so this job is what makes scenario 2 of the story work.
+
+- **Off by default** (`DISPATCH_TICKET_EMAILS_ENABLED=false`). It needs `SERVICE_TOKEN` or `SERVICE_TOKEN_FILE` like the other jobs that call a service.
+- **A run** calls the service with a limit (`DISPATCH_TICKET_EMAILS_BATCH_SIZE`, 50 by default, at most 100) and calls again only while a batch comes back full, up to the
+  time and call limits. The counts of each call are `sent`, `retried` and `failed`; a failing call ends the run and is logged with the correlation id of the run.
+- **The route is at the root of the service** (`/internal/fulfillments/dispatch`), so `TICKETING_API_URL` has no context path.
+- **Authentication:** the internal routes of Ticketing do not check the token yet (`csp-ticketing-api#12`); the worker sends it anyway.
+
 ### Light jobs and heavy jobs in one worker
 
 The worker is the home of every background process (Norma 4.3), and its jobs are not all alike:
@@ -122,7 +135,7 @@ The worker is the home of every background process (Norma 4.3), and its jobs are
 They live together under three rules that the code already follows:
 
 1. **One job, one flag, one thread.** Each job is a `ScheduledJob` with its own interval and its own thread, and it exists
-   only when its flag is on (`EXPIRE_HOLDS_ENABLED`, `PURGE_AUTH_ENABLED`, `OUTBOX_RELAY_ENABLED`, `AUTH_OUTBOX_RELAY_ENABLED`, `CONCESSIONS_OUTBOX_RELAY_ENABLED`, `TICKETING_OUTBOX_RELAY_ENABLED`, `CONCESSIONS_EVENTS_ENABLED`, `EXPIRE_CONCESSIONS_ORDERS_ENABLED`, and the one of the next job). A slow job
+   only when its flag is on (`EXPIRE_HOLDS_ENABLED`, `PURGE_AUTH_ENABLED`, `OUTBOX_RELAY_ENABLED`, `AUTH_OUTBOX_RELAY_ENABLED`, `CONCESSIONS_OUTBOX_RELAY_ENABLED`, `TICKETING_OUTBOX_RELAY_ENABLED`, `CONCESSIONS_EVENTS_ENABLED`, `EXPIRE_CONCESSIONS_ORDERS_ENABLED`, and `DISPATCH_TICKET_EMAILS_ENABLED`). A slow job
    never delays the others, and an instance without `expire-holds` or `purge-auth` needs no `SERVICE_TOKEN`.
 2. **Same pattern for every job.** Ports in the core, adapters outside, a bound per run (Norma 5.7), retries with backoff
    and an idempotent effect, so a duplicate delivery is harmless. A new job reuses this pattern; it does not invent a new one.
@@ -169,6 +182,10 @@ that carries `BookingConfirmed` from Booking to the broker, so that flow has a w
 | `EXPIRE_CONCESSIONS_ORDERS_EVERY` | Scheduler interval in seconds of `expire-concessions-orders` | `60` |
 | `EXPIRE_CONCESSIONS_ORDERS_BATCH_SIZE` | Orders asked per call, from 1 to 500; the worker refuses to start otherwise | `100` |
 | `EXPIRE_CONCESSIONS_ORDERS_RUN_TIMEOUT` | Seconds a run may keep calling before it stops | `60` |
+| `DISPATCH_TICKET_EMAILS_ENABLED` | Turns the dispatch of the ticket emails on; it needs `TICKETING_API_URL` and the service token | `false` |
+| `DISPATCH_TICKET_EMAILS_EVERY` | Scheduler interval in seconds of `dispatch-ticket-emails` | `30` |
+| `DISPATCH_TICKET_EMAILS_BATCH_SIZE` | Deliveries asked per call, from 1 to 100; the worker refuses to start otherwise | `50` |
+| `DISPATCH_TICKET_EMAILS_RUN_TIMEOUT` | Seconds a run may keep calling before it stops | `60` |
 | `CONCESSIONS_OUTBOX_RELAY_ENABLED` | Turns the concessions outbox relay on; it needs the same database and broker variables, and the consumer of Ticketing declared first | `false` |
 | `CONCESSIONS_OUTBOX_RELAY_EVERY` | Scheduler interval in seconds of `concessions-outbox-relay` | `5` |
 | `CONCESSIONS_OUTBOX_RELAY_EVENT_TYPES` | Comma-separated concessions event types to publish: `ConcessionOrderCreated`, `ConcessionStockReserved`, `ConcessionOrderConfirmed`, `ConcessionOrderCancelled` | `ConcessionOrderConfirmed` |
@@ -180,6 +197,7 @@ that carries `BookingConfirmed` from Booking to the broker, so that flow has a w
 | `CONCESSIONS_EVENTS_BATCH_SIZE` | Messages a run may take, at least 1 | `100` |
 | `CONCESSIONS_EVENTS_RUN_TIMEOUT` | Seconds a run may keep taking messages before it stops | `20` |
 | `CONCESSIONS_API_URL` | Concessions service internal URL | `http://concessions-api:8085/api/v1/concessions` |
+| `TICKETING_API_URL` | Ticketing service internal URL; its internal routes start at the root of the service, not under `/api/v1/ticketing` | `http://ticketing-api:8084` |
 | `CONCESSIONS_AMQP_URL` | RabbitMQ URI with the login of Concessions (`concessions`, ADR-036) | required when the job is on |
 | `CONCESSIONS_AMQP_EXCHANGE` / `CONCESSIONS_AMQP_DEAD_LETTER_EXCHANGE` | Events exchange and dead-letter exchange, checked at start | `cine.events` / `cine.dlx` |
 | `RELAY_DATABASE_URL` / `RELAY_DATABASE_USER` / `RELAY_DATABASE_PASSWORD` | PostgreSQL login of the relays (`worker_app`) | user `worker_app` |
