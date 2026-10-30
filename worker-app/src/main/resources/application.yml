@@ -59,6 +59,13 @@ worker:
     interval-seconds: ${EXPIRE_CONCESSIONS_ORDERS_EVERY:60}
     batch-size: ${EXPIRE_CONCESSIONS_ORDERS_BATCH_SIZE:100}
     run-timeout-seconds: ${EXPIRE_CONCESSIONS_ORDERS_RUN_TIMEOUT:60}
+  # Asks the ticketing service to send the emails of the tickets that are ready, and to retry the ones whose
+  # contact is not known yet (HU-TICKETING-002, ADR-057). Off until the service has the operation.
+  dispatch-ticket-emails:
+    enabled: ${DISPATCH_TICKET_EMAILS_ENABLED:false}
+    interval-seconds: ${DISPATCH_TICKET_EMAILS_EVERY:30}
+    batch-size: ${DISPATCH_TICKET_EMAILS_BATCH_SIZE:50}
+    run-timeout-seconds: ${DISPATCH_TICKET_EMAILS_RUN_TIMEOUT:60}
   # Publishes the concessions outbox (ADR-019, ADR-045) with the login and broker above. Off until the consumers exist.
   # Only the listed event types are published: Ticketing is the one consumer, of ConcessionOrderConfirmed.
   concessions-outbox-relay:
@@ -84,6 +91,12 @@ auth:
 concessions:
   api:
     url: ${CONCESSIONS_API_URL:http://concessions-api:8085/api/v1/concessions}
+    timeout-seconds: 10
+
+# The internal routes of Ticketing start at the root of the service, not under /api/v1/ticketing.
+ticketing:
+  api:
+    url: ${TICKETING_API_URL:http://ticketing-api:8084}
     timeout-seconds: 10
 
 logging:
