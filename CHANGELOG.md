@@ -10,6 +10,7 @@ and is tagged `v<version>` once it is merged.
 
 ### Fixed
 
+- `develop` did not compile (HU-TICKETING-002): `GenerateTicketPdfJob` declared `name()` twice and its configuration used a `RelayDomain.TICKETING` that does not exist. The job was a draft (it built the ticket from random values and published again the Booking event it read) and contradicted ADR-057, which makes the worker ask `csp-ticketing-api` which tickets lack a PDF. The job, its configuration, its `generate-ticket-pdf` settings, the `TicketingApi` and `ObjectStoragePort` ports, their two adapters and the unused starters are removed. The PDF generator port and adapter stay for the real job.
 - The outbox relays no longer declare the exchange (HU-AUTH-004, ADR-036): the login `worker_relay` has `configure ^$`, so the declaration was refused and nothing was published. `AmqpEventPublisher` now checks that the exchange exists with a passive declaration and publishes; a missing exchange is a retryable failure that logs its name (no credential), reopens the connection and recovers when the exchange appears. An AMQP URL with an empty virtual host (ending in a bare `/`) stops the startup with a message that asks for `/%2F`.
 
 ### Added
