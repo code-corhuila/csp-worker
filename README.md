@@ -13,6 +13,7 @@ asks for: expiration sweeps, notifications, reindexation. It exposes no business
 | `outbox-relay` | Every 5s, when enabled | Publishes the events the booking API wrote to `booking.outbox_event` to RabbitMQ, with at-least-once delivery ([ADR-014](https://github.com/code-corhuila/csp-docs/blob/main/05-architecture/decisions/records/ADR-014-booking-outbox-relay-read-only.md)) |
 | `auth-outbox-relay` | Every 5s, when enabled | Publishes the events of `auth.outbox_event` that have a consumer to RabbitMQ, with the same delivery semantics ([ADR-019](https://github.com/code-corhuila/csp-docs/blob/main/05-architecture/decisions/records/ADR-019-outbox-relay-read-only-for-other-domains.md)) |
 | `concessions-outbox-relay` | Every 5s, when enabled | Publishes the events of `concessions.outbox_event` that have a consumer to RabbitMQ, with the same delivery semantics ([ADR-019](https://github.com/code-corhuila/csp-docs/blob/main/05-architecture/decisions/records/ADR-019-outbox-relay-read-only-for-other-domains.md), [ADR-045](https://github.com/code-corhuila/csp-docs/blob/main/05-architecture/decisions/records/ADR-045-concessions-orders-stock-holds-and-reservation-events.md)) |
+| `ticketing-outbox-relay` | Every 5s, when enabled | Publishes the `TicketIssued` events of `ticketing_fulfillment.outbox_event` to RabbitMQ, with the same delivery semantics ([ADR-057](https://github.com/code-corhuila/csp-docs/blob/main/05-architecture/decisions/records/ADR-057-ticket-issuance-pdf-in-worker-and-delivery-retry.md)) |
 | `concessions-reservation-events` | Every 5s, when enabled | Takes `BookingConfirmed` and `ReservationExpired` from the queues of Concessions and calls `POST /internal/orders/by-reservation/{reservationId}/confirm` or `.../release` on the concessions service, so the order of a reservation is confirmed or released when the reservation is (HU-CONCESSIONS-004, [ADR-045](https://github.com/code-corhuila/csp-docs/blob/main/05-architecture/decisions/records/ADR-045-concessions-orders-stock-holds-and-reservation-events.md)) |
 | `expire-concessions-orders` | Every 60s, when enabled | Calls `POST /internal/orders/expire` on the concessions service in batches of up to 100 orders until it reports no more, or the run is out of time (60s) or calls (100): it releases the orders without a reservation whose `ORDER_HOLD_MINUTES` ran out (HU-CONCESSIONS-004, [ADR-045](https://github.com/code-corhuila/csp-docs/blob/main/05-architecture/decisions/records/ADR-045-concessions-orders-stock-holds-and-reservation-events.md)) |
 
@@ -76,6 +77,19 @@ permanent failures; an unroutable message is a permanent failure.
 - The envelope has `source` `concessions-service`, `aggregateType` `ConcessionOrder` and the correlation id of the request in `metadata`, so the relay requires them.
 - The relay does not guarantee the publication order of the events of the same batch: consumers must not depend on it. One relay instance per environment, enforced by the lock.
 
+### Ticketing outbox relay
+
+Same relay, reading `ticketing_fulfillment.outbox_event` (role `ticketing_outbox_reader`, created by `csp-ticketing-db` V007), with its own publication state
+key (`ticketing_fulfillment`), its own PostgreSQL advisory lock and its own broker connection. Delivery is at-least-once, with the same envelope check, backoff
+and permanent failures; an unroutable message is a permanent failure.
+
+- **Off by default** (`TICKETING_OUTBOX_RELAY_ENABLED=false`). **Do not turn it on before the queue exists**: `csp-ticketing-api` declares a queue bound to
+  `cine.ticketing_fulfillment.ticket-issued.v1`, otherwise every event is unroutable and fails for good.
+- **Database access:** the role `ticketing_outbox_reader` has to be granted to the login `worker_app` by the infrastructure of each environment; the migration only creates it.
+- **Events:** `TicketIssued` only; any other name in `TICKETING_OUTBOX_RELAY_EVENT_TYPES` stops the startup. Routing key `cine.ticketing_fulfillment.ticket-issued.v1`.
+- The envelope has `source` `ticketing-fulfillment-service`, `aggregateType` `Ticket` and the correlation id of the call that registered the PDF in `metadata`, so the relay requires them.
+- The relay does not guarantee the publication order. One relay instance per environment, enforced by the lock.
+
 ### Reservation events of Concessions
 
 Off by default (`CONCESSIONS_EVENTS_ENABLED=false`). A run takes up to `CONCESSIONS_EVENTS_BATCH_SIZE` messages (100) in at most
@@ -108,7 +122,7 @@ The worker is the home of every background process (Norma 4.3), and its jobs are
 They live together under three rules that the code already follows:
 
 1. **One job, one flag, one thread.** Each job is a `ScheduledJob` with its own interval and its own thread, and it exists
-   only when its flag is on (`EXPIRE_HOLDS_ENABLED`, `PURGE_AUTH_ENABLED`, `OUTBOX_RELAY_ENABLED`, `AUTH_OUTBOX_RELAY_ENABLED`, `CONCESSIONS_OUTBOX_RELAY_ENABLED`, `CONCESSIONS_EVENTS_ENABLED`, `EXPIRE_CONCESSIONS_ORDERS_ENABLED`, and the one of the next job). A slow job
+   only when its flag is on (`EXPIRE_HOLDS_ENABLED`, `PURGE_AUTH_ENABLED`, `OUTBOX_RELAY_ENABLED`, `AUTH_OUTBOX_RELAY_ENABLED`, `CONCESSIONS_OUTBOX_RELAY_ENABLED`, `TICKETING_OUTBOX_RELAY_ENABLED`, `CONCESSIONS_EVENTS_ENABLED`, `EXPIRE_CONCESSIONS_ORDERS_ENABLED`, and the one of the next job). A slow job
    never delays the others, and an instance without `expire-holds` or `purge-auth` needs no `SERVICE_TOKEN`.
 2. **Same pattern for every job.** Ports in the core, adapters outside, a bound per run (Norma 5.7), retries with backoff
    and an idempotent effect, so a duplicate delivery is harmless. A new job reuses this pattern; it does not invent a new one.
@@ -158,6 +172,9 @@ that carries `BookingConfirmed` from Booking to the broker, so that flow has a w
 | `CONCESSIONS_OUTBOX_RELAY_ENABLED` | Turns the concessions outbox relay on; it needs the same database and broker variables, and the consumer of Ticketing declared first | `false` |
 | `CONCESSIONS_OUTBOX_RELAY_EVERY` | Scheduler interval in seconds of `concessions-outbox-relay` | `5` |
 | `CONCESSIONS_OUTBOX_RELAY_EVENT_TYPES` | Comma-separated concessions event types to publish: `ConcessionOrderCreated`, `ConcessionStockReserved`, `ConcessionOrderConfirmed`, `ConcessionOrderCancelled` | `ConcessionOrderConfirmed` |
+| `TICKETING_OUTBOX_RELAY_ENABLED` | Turns the ticketing outbox relay on; it needs the same database and broker variables, and the queue bound to `cine.ticketing_fulfillment.ticket-issued.v1` declared first | `false` |
+| `TICKETING_OUTBOX_RELAY_EVERY` | Scheduler interval in seconds of `ticketing-outbox-relay` | `5` |
+| `TICKETING_OUTBOX_RELAY_EVENT_TYPES` | Comma-separated ticketing event types to publish: `TicketIssued` | `TicketIssued` |
 | `CONCESSIONS_EVENTS_ENABLED` | Turns the settlement of the orders of the reservations on; it needs `CONCESSIONS_AMQP_URL` and the service token | `false` |
 | `CONCESSIONS_EVENTS_EVERY` | Scheduler interval in seconds of `concessions-reservation-events` | `5` |
 | `CONCESSIONS_EVENTS_BATCH_SIZE` | Messages a run may take, at least 1 | `100` |

@@ -8,6 +8,10 @@ and is tagged `v<version>` once it is merged.
 
 ## [Unreleased]
 
+### Added
+
+- Outbox relay of Ticketing (HU-TICKETING-002, ADR-057): `ticketing-outbox-relay` publishes the `TicketIssued` events of `ticketing_fulfillment.outbox_event` to `cine.events` with the same at-least-once delivery, envelope check and backoff as the other relays, with routing key `cine.ticketing_fulfillment.ticket-issued.v1`, its own state key, lock and connection. Off by default (`TICKETING_OUTBOX_RELAY_ENABLED=false`, `TICKETING_OUTBOX_RELAY_EVERY`, `TICKETING_OUTBOX_RELAY_EVENT_TYPES`).
+
 ### Fixed
 
 - `develop` did not compile (HU-TICKETING-002): `GenerateTicketPdfJob` declared `name()` twice and its configuration used a `RelayDomain.TICKETING` that does not exist. The job was a draft (it built the ticket from random values and published again the Booking event it read) and contradicted ADR-057, which makes the worker ask `csp-ticketing-api` which tickets lack a PDF. The job, its configuration, its `generate-ticket-pdf` settings, the `TicketingApi` and `ObjectStoragePort` ports, their two adapters and the unused starters are removed. The PDF generator port and adapter stay for the real job.
