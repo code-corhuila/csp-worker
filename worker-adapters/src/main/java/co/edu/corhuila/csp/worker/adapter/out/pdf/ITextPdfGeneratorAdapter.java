@@ -31,14 +31,14 @@ public class ITextPdfGeneratorAdapter implements TicketPdfGeneratorPort {
             doc.add(new Paragraph("CineSync Platform").setFontSize(20).setBold().setTextAlignment(com.itextpdf.layout.properties.TextAlignment.CENTER).setMarginBottom(10));
             doc.add(new Paragraph("Digital Ticket").setFontSize(16).setTextAlignment(com.itextpdf.layout.properties.TextAlignment.CENTER).setMarginBottom(20));
             var table = new Table(UnitValue.createPercentArray(new float[]{30, 70})).useAllAvailableWidth();
-            addRow(table, "Movie", t.movieTitleSnapshot());
-            addRow(table, "Room", t.roomNameSnapshot());
-            addRow(table, "Showtime", t.showtimeStartsAt().toString());
-            addRow(table, "Seats", String.join(", ", t.seatLabelsSnapshot()));
+            addRow(table, "Movie", t.movieTitle());
+            addRow(table, "Room", t.roomName());
+            addRow(table, "Showtime", t.showtimeStartsAt() == null ? "To be confirmed" : t.showtimeStartsAt().toString());
+            addRow(table, "Seats", String.join(", ", t.seatNumbers()));
             addRow(table, "Reservation", t.reservationId().toString());
             addRow(table, "QR", t.qrPayload());
-            if (t.concessionsSnapshot() != null && !t.concessionsSnapshot().isEmpty()) {
-                addRow(table, "Concessions", t.concessionsSnapshot().stream().map(c -> c.name() + " x" + c.quantity()).reduce((a,b)->a+", "+b).orElse(""));
+            if (t.concessions() != null && !t.concessions().isEmpty()) {
+                addRow(table, "Concessions", t.concessions().stream().map(c -> c.name() + " x" + c.quantity()).reduce((a,b)->a+", "+b).orElse(""));
             }
             doc.add(table);
             doc.add(new Paragraph("\n"));
