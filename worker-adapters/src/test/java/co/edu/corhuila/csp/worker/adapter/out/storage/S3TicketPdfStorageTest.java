@@ -50,7 +50,7 @@ class S3TicketPdfStorageTest {
     }
 
     private static S3TicketPdfStorage storage() {
-        return new S3TicketPdfStorage(url, accessKey, secretKey, BUCKET);
+        return new S3TicketPdfStorage(url, accessKey, secretKey, BUCKET, "us-east-1");
     }
 
     private static String key() {
@@ -98,14 +98,14 @@ class S3TicketPdfStorageTest {
 
     @Test
     void aBucketThatDoesNotExistIsAStorageFailure() {
-        S3TicketPdfStorage missing = new S3TicketPdfStorage(url, accessKey, secretKey, "no-such-bucket");
+        S3TicketPdfStorage missing = new S3TicketPdfStorage(url, accessKey, secretKey, "no-such-bucket", "us-east-1");
 
         assertThrows(PdfStorageException.class, () -> missing.storeOnce(key(), "%PDF".getBytes()));
     }
 
     @Test
     void aWrongSecretIsAStorageFailureThatDoesNotLeakTheCredentials() {
-        S3TicketPdfStorage wrong = new S3TicketPdfStorage(url, accessKey, "wrong-secret-value", BUCKET);
+        S3TicketPdfStorage wrong = new S3TicketPdfStorage(url, accessKey, "wrong-secret-value", BUCKET, "us-east-1");
 
         PdfStorageException failure = assertThrows(PdfStorageException.class, () -> wrong.storeOnce(key(), "%PDF".getBytes()));
         assertFalse(failure.getMessage().contains("wrong-secret-value"));
@@ -114,7 +114,7 @@ class S3TicketPdfStorageTest {
 
     @Test
     void aStorageThatDoesNotAnswerIsAStorageFailure() {
-        S3TicketPdfStorage down = new S3TicketPdfStorage("http://127.0.0.1:1", accessKey, secretKey, BUCKET);
+        S3TicketPdfStorage down = new S3TicketPdfStorage("http://127.0.0.1:1", accessKey, secretKey, BUCKET, "us-east-1");
 
         PdfStorageException failure = assertThrows(PdfStorageException.class, () -> down.storeOnce(key(), "%PDF".getBytes()));
         assertTrue(failure.getMessage().startsWith("the object storage"));
@@ -122,7 +122,7 @@ class S3TicketPdfStorageTest {
 
     @Test
     void blankCredentialsAreRefusedAtStart() {
-        assertThrows(IllegalStateException.class, () -> new S3TicketPdfStorage(url, "", secretKey, BUCKET));
-        assertThrows(IllegalStateException.class, () -> new S3TicketPdfStorage(url, accessKey, " ", BUCKET));
+        assertThrows(IllegalStateException.class, () -> new S3TicketPdfStorage(url, "", secretKey, BUCKET, "us-east-1"));
+        assertThrows(IllegalStateException.class, () -> new S3TicketPdfStorage(url, accessKey, " ", BUCKET, "us-east-1"));
     }
 }
