@@ -66,6 +66,11 @@ worker:
     interval-seconds: ${CONCESSIONS_OUTBOX_RELAY_EVERY:5}
     event-types: ${CONCESSIONS_OUTBOX_RELAY_EVENT_TYPES:ConcessionOrderConfirmed}
 
+  ticketing-outbox-relay:
+    enabled: ${TICKETING_OUTBOX_RELAY_ENABLED:false}
+    interval-seconds: ${TICKETING_OUTBOX_RELAY_EVERY:5}
+    event-types: ${TICKETING_OUTBOX_RELAY_EVENT_TYPES:TicketIssued}
+
 booking:
   api:
     url: ${BOOKING_API_URL:http://booking-api:8083/api/v1/booking}
