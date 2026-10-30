@@ -33,6 +33,7 @@ final class PostgresSupport {
         jdbc.execute("DROP SCHEMA IF EXISTS booking CASCADE");
         jdbc.execute("DROP SCHEMA IF EXISTS auth CASCADE");
         jdbc.execute("DROP SCHEMA IF EXISTS concessions CASCADE");
+        jdbc.execute("DROP SCHEMA IF EXISTS ticketing_fulfillment CASCADE");
         jdbc.execute("CREATE SCHEMA auth");
         jdbc.execute("""
                 CREATE TABLE auth.outbox_event (
@@ -43,6 +44,18 @@ final class PostgresSupport {
                     payload        jsonb       NOT NULL,
                     created_at     timestamptz NOT NULL DEFAULT NOW(),
                     CONSTRAINT pk_auth_outbox_event PRIMARY KEY (id)
+                )
+                """);
+        jdbc.execute("CREATE SCHEMA ticketing_fulfillment");
+        jdbc.execute("""
+                CREATE TABLE ticketing_fulfillment.outbox_event (
+                    id             UUID        NOT NULL DEFAULT gen_random_uuid(),
+                    aggregate_type TEXT        NOT NULL,
+                    aggregate_id   UUID        NOT NULL,
+                    event_type     TEXT        NOT NULL,
+                    payload        JSONB       NOT NULL,
+                    created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    CONSTRAINT pk_outbox_event PRIMARY KEY (id)
                 )
                 """);
         jdbc.execute("CREATE SCHEMA concessions");
@@ -102,6 +115,20 @@ final class PostgresSupport {
                 + "\"metadata\":{\"correlationId\":\"corr-1\"}}";
         jdbc.update("INSERT INTO concessions.outbox_event (id, aggregate_type, aggregate_id, event_type, payload, "
                 + "created_at) VALUES (?, 'ConcessionOrder', ?, ?, ?::jsonb, ?::timestamptz)", id, order, eventType,
+                envelope, createdAt);
+        return id;
+    }
+
+    /** A row of the ticketing outbox the way {@code csp-ticketing-api} writes it (ADR-057): a traced envelope. */
+    static java.util.UUID insertTicketingEvent(JdbcTemplate jdbc, String eventType, String createdAt) {
+        java.util.UUID id = java.util.UUID.randomUUID();
+        java.util.UUID ticket = java.util.UUID.randomUUID();
+        String envelope = "{\"eventId\":\"" + id + "\",\"eventType\":\"" + eventType + "\",\"aggregateId\":\"" + ticket
+                + "\",\"aggregateType\":\"Ticket\",\"occurredAt\":\"" + createdAt + "\",\"version\":1,"
+                + "\"source\":\"ticketing-fulfillment-service\",\"payload\":{\"ticketId\":\"" + ticket + "\"},"
+                + "\"metadata\":{\"correlationId\":\"corr-1\"}}";
+        jdbc.update("INSERT INTO ticketing_fulfillment.outbox_event (id, aggregate_type, aggregate_id, event_type, "
+                + "payload, created_at) VALUES (?, 'Ticket', ?, ?, ?::jsonb, ?::timestamptz)", id, ticket, eventType,
                 envelope, createdAt);
         return id;
     }
