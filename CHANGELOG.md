@@ -10,6 +10,7 @@ and is tagged `v<version>` once it is merged.
 
 ### Added
 
+- Dispatch of the ticket emails (HU-TICKETING-002, ADR-057): `dispatch-ticket-emails` calls `POST /internal/fulfillments/dispatch` on the ticketing service in batches (1 to 100, 50 by default) until a batch comes back short, or the run is out of time or calls, with the service token and the correlation id of the run. The service sends the emails and keeps a delivery pending, with a growing delay, while the contact of the user is not known. Off by default (`DISPATCH_TICKET_EMAILS_ENABLED=false`, `DISPATCH_TICKET_EMAILS_EVERY`, `DISPATCH_TICKET_EMAILS_BATCH_SIZE`, `DISPATCH_TICKET_EMAILS_RUN_TIMEOUT`, `TICKETING_API_URL`).
 - Outbox relay of Ticketing (HU-TICKETING-002, ADR-057): `ticketing-outbox-relay` publishes the `TicketIssued` events of `ticketing_fulfillment.outbox_event` to `cine.events` with the same at-least-once delivery, envelope check and backoff as the other relays, with routing key `cine.ticketing_fulfillment.ticket-issued.v1`, its own state key, lock and connection. Off by default (`TICKETING_OUTBOX_RELAY_ENABLED=false`, `TICKETING_OUTBOX_RELAY_EVERY`, `TICKETING_OUTBOX_RELAY_EVENT_TYPES`).
 
 ### Fixed
