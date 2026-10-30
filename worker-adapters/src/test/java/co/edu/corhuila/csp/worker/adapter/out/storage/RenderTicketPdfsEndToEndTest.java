@@ -69,7 +69,7 @@ class RenderTicketPdfsEndToEndTest {
             RenderTicketPdfsJob job = new RenderTicketPdfsJob(
                     new TicketingPdfClient("http://127.0.0.1:" + ticketing.getAddress().getPort(),
                             new ServiceTokenSource("service-token", ""), 5),
-                    new ITextPdfGeneratorAdapter(), new S3TicketPdfStorage(url, accessKey, secretKey, BUCKET), 10,
+                    new ITextPdfGeneratorAdapter(), new S3TicketPdfStorage(url, accessKey, secretKey, BUCKET, "us-east-1"), 10,
                     Duration.ofSeconds(30), Clock.systemUTC());
 
             JobResult first = job.run();
