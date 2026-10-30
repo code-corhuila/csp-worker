@@ -66,6 +66,13 @@ worker:
     interval-seconds: ${DISPATCH_TICKET_EMAILS_EVERY:30}
     batch-size: ${DISPATCH_TICKET_EMAILS_BATCH_SIZE:50}
     run-timeout-seconds: ${DISPATCH_TICKET_EMAILS_RUN_TIMEOUT:60}
+  # Renders the PDF of the tickets that wait for it and stores it in the object storage (HU-TICKETING-002, ADR-057,
+  # ADR-058). Off until the service has the operations and the storage exists.
+  render-ticket-pdfs:
+    enabled: ${RENDER_TICKET_PDFS_ENABLED:false}
+    interval-seconds: ${RENDER_TICKET_PDFS_EVERY:30}
+    batch-size: ${RENDER_TICKET_PDFS_BATCH_SIZE:20}
+    run-timeout-seconds: ${RENDER_TICKET_PDFS_RUN_TIMEOUT:60}
   # Publishes the concessions outbox (ADR-019, ADR-045) with the login and broker above. Off until the consumers exist.
   # Only the listed event types are published: Ticketing is the one consumer, of ConcessionOrderConfirmed.
   concessions-outbox-relay:
@@ -92,6 +99,13 @@ concessions:
   api:
     url: ${CONCESSIONS_API_URL:http://concessions-api:8085/api/v1/concessions}
     timeout-seconds: 10
+
+# The private bucket of the ticket PDFs, written with the writer account (ADR-058).
+object-storage:
+  url: ${OBJECT_STORAGE_URL:http://rustfs:9000}
+  access-key: ${OBJECT_STORAGE_ACCESS_KEY:}
+  secret-key: ${OBJECT_STORAGE_SECRET_KEY:}
+  bucket: ${OBJECT_STORAGE_BUCKET:tickets}
 
 # The internal routes of Ticketing start at the root of the service, not under /api/v1/ticketing.
 ticketing:

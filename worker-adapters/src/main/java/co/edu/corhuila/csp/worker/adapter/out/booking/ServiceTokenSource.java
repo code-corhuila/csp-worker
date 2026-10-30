@@ -14,12 +14,12 @@ import org.springframework.stereotype.Component;
  * which lets the platform rotate the secret without restarting the worker; with
  * {@code SERVICE_TOKEN} the value is fixed for the life of the process. One of the two is required,
  * and the worker refuses to start without a token (Norma 5.7.4). It exists only while a job that calls
- * another service is on ({@code expire-holds}, {@code purge-auth}, {@code concessions-reservation-events}, {@code expire-concessions-orders} or {@code dispatch-ticket-emails}).
+ * another service is on ({@code expire-holds}, {@code purge-auth}, {@code concessions-reservation-events}, {@code expire-concessions-orders}, {@code dispatch-ticket-emails} or {@code render-ticket-pdfs}).
  */
 @Component
 @ConditionalOnExpression("${worker.expire-holds.enabled:true} or ${worker.purge-auth.enabled:false}"
         + " or ${worker.concessions-reservation-events.enabled:false} or ${worker.expire-concessions-orders.enabled:false}"
-        + " or ${worker.dispatch-ticket-emails.enabled:false}")
+        + " or ${worker.dispatch-ticket-emails.enabled:false} or ${worker.render-ticket-pdfs.enabled:false}")
 public class ServiceTokenSource {
 
     private final String fixedToken;
