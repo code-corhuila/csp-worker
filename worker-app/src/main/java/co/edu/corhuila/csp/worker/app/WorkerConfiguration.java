@@ -4,11 +4,15 @@ import co.edu.corhuila.csp.worker.adapter.in.scheduler.ScheduledJob;
 import co.edu.corhuila.csp.worker.application.port.out.AuthMaintenanceApi;
 import co.edu.corhuila.csp.worker.application.port.out.BookingExpireHoldsApi;
 import co.edu.corhuila.csp.worker.application.port.out.ConcessionsOrdersApi;
+import co.edu.corhuila.csp.worker.application.port.out.TicketPdfStorage;
 import co.edu.corhuila.csp.worker.application.port.out.TicketingDispatchApi;
+import co.edu.corhuila.csp.worker.application.port.out.TicketingPdfApi;
+import co.edu.corhuila.csp.worker.application.port.out.pdf.TicketPdfGeneratorPort;
 import co.edu.corhuila.csp.worker.application.usecase.DispatchTicketEmailsJob;
 import co.edu.corhuila.csp.worker.application.usecase.ExpireConcessionsOrdersJob;
 import co.edu.corhuila.csp.worker.application.usecase.ExpireHoldsJob;
 import co.edu.corhuila.csp.worker.application.usecase.PurgeAuthJob;
+import co.edu.corhuila.csp.worker.application.usecase.RenderTicketPdfsJob;
 import java.time.Clock;
 import java.time.Duration;
 import org.springframework.beans.factory.annotation.Value;
@@ -59,6 +63,17 @@ public class WorkerConfiguration {
             @Value("${worker.dispatch-ticket-emails.run-timeout-seconds:60}") long runTimeoutSeconds,
             @Value("${worker.dispatch-ticket-emails.interval-seconds:30}") long intervalSeconds) {
         return new ScheduledJob(new DispatchTicketEmailsJob(ticketingApi, batchSize,
+                Duration.ofSeconds(runTimeoutSeconds), Clock.systemUTC()), Duration.ofSeconds(intervalSeconds));
+    }
+
+    @Bean
+    @ConditionalOnProperty(prefix = "worker.render-ticket-pdfs", name = "enabled", havingValue = "true")
+    ScheduledJob renderTicketPdfsJob(TicketingPdfApi ticketingApi, TicketPdfGeneratorPort generator,
+            TicketPdfStorage storage,
+            @Value("${worker.render-ticket-pdfs.batch-size:20}") int batchSize,
+            @Value("${worker.render-ticket-pdfs.run-timeout-seconds:60}") long runTimeoutSeconds,
+            @Value("${worker.render-ticket-pdfs.interval-seconds:30}") long intervalSeconds) {
+        return new ScheduledJob(new RenderTicketPdfsJob(ticketingApi, generator, storage, batchSize,
                 Duration.ofSeconds(runTimeoutSeconds), Clock.systemUTC()), Duration.ofSeconds(intervalSeconds));
     }
 }
