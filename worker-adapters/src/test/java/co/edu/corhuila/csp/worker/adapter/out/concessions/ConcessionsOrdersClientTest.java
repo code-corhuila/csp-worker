@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import co.edu.corhuila.csp.worker.adapter.out.booking.ServiceTokenSource;
+import co.edu.corhuila.csp.worker.application.port.out.ExpireOrdersResult;
 import co.edu.corhuila.csp.worker.application.port.out.OrdersApiException;
 import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
@@ -31,6 +32,8 @@ class ConcessionsOrdersClientTest {
     private final List<String> authorizations = new CopyOnWriteArrayList<>();
     private final List<String> correlations = new CopyOnWriteArrayList<>();
     private final List<Integer> answers = new CopyOnWriteArrayList<>();
+    private final List<String> bodies = new CopyOnWriteArrayList<>();
+    private final List<String> contentTypes = new CopyOnWriteArrayList<>();
 
     @BeforeEach
     void startTheService() throws IOException {
@@ -39,12 +42,14 @@ class ConcessionsOrdersClientTest {
             paths.add(exchange.getRequestMethod() + " " + exchange.getRequestURI().getPath());
             authorizations.add(exchange.getRequestHeaders().getFirst("Authorization"));
             correlations.add(exchange.getRequestHeaders().getFirst("X-Correlation-Id"));
-            exchange.getRequestBody().readAllBytes();
+            bodies.add(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+            contentTypes.add(String.valueOf(exchange.getRequestHeaders().getFirst("Content-Type")));
             int status = answers.isEmpty() ? 204 : answers.remove(0);
             if (status == 204) {
                 exchange.sendResponseHeaders(204, -1);
             } else {
-                byte[] body = "{\"error\":\"X\"}".getBytes(StandardCharsets.UTF_8);
+                byte[] body = (status == 200 ? "{\"processedCount\":37,\"hasMore\":true}" : "{\"error\":\"X\"}")
+                        .getBytes(StandardCharsets.UTF_8);
                 exchange.sendResponseHeaders(status, body.length);
                 exchange.getResponseBody().write(body);
             }
@@ -72,6 +77,28 @@ class ConcessionsOrdersClientTest {
         client().releaseByReservation(RESERVATION, "run-2");
 
         assertEquals(List.of("POST " + CONTEXT + "/internal/orders/by-reservation/" + RESERVATION + "/release"), paths);
+    }
+
+    @Test
+    void theSweepCallsItsRouteWithTheBatchSizeAndReadsWhatWasReleased() {
+        answers.add(200);
+
+        ExpireOrdersResult result = client().expireOrders("run-8", 250);
+
+        assertEquals(new ExpireOrdersResult(37, true), result);
+        assertEquals(List.of("POST " + CONTEXT + "/internal/orders/expire"), paths);
+        assertEquals(List.of("Bearer service-token"), authorizations);
+        assertEquals(List.of("run-8"), correlations);
+        assertEquals(List.of("{\"batchSize\":250}"), bodies);
+        assertEquals(List.of("application/json"), contentTypes);
+    }
+
+    @Test
+    void aFailingSweepIsRetriedLikeAnyOtherCall() {
+        answers.addAll(List.of(503, 200));
+
+        assertEquals(37, client().expireOrders("run-9", 10).processedCount());
+        assertEquals(2, paths.size());
     }
 
     @Test
