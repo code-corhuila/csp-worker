@@ -42,6 +42,17 @@ worker:
     enabled: ${AUTH_OUTBOX_RELAY_ENABLED:false}
     interval-seconds: ${AUTH_OUTBOX_RELAY_EVERY:5}
     event-types: ${AUTH_OUTBOX_RELAY_EVENT_TYPES:UserRegistered,UserEmailChanged}
+  # Settles the concession order of a reservation when Booking confirms or expires it (HU-CONCESSIONS-004, ADR-045).
+  # It reads the queues of Concessions with the broker login of that service. Off until the broker exists.
+  concessions-reservation-events:
+    enabled: ${CONCESSIONS_EVENTS_ENABLED:false}
+    interval-seconds: ${CONCESSIONS_EVENTS_EVERY:5}
+    batch-size: ${CONCESSIONS_EVENTS_BATCH_SIZE:100}
+    run-timeout-seconds: ${CONCESSIONS_EVENTS_RUN_TIMEOUT:20}
+    amqp:
+      url: ${CONCESSIONS_AMQP_URL:}
+      exchange: ${CONCESSIONS_AMQP_EXCHANGE:cine.events}
+      dead-letter-exchange: ${CONCESSIONS_AMQP_DEAD_LETTER_EXCHANGE:cine.dlx}
 
 booking:
   api:
@@ -51,6 +62,11 @@ booking:
 auth:
   api:
     url: ${AUTH_API_URL:http://auth-api:8081/api/v1/auth}
+    timeout-seconds: 10
+
+concessions:
+  api:
+    url: ${CONCESSIONS_API_URL:http://concessions-api:8085/api/v1/concessions}
     timeout-seconds: 10
 
 logging:
