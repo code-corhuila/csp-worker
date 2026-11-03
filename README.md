@@ -74,7 +74,7 @@ A relay turned on before the queues exist does not lose events: each one is mark
 exist, replay them (tested with the auth relay: two events failed this way and, after the replay, both reached the consumer once):
 
 ```bash
-# From csp-infra-postgres, as the instance administrator. See what failed, by relay (source: booking, auth, concessions, ticketing):
+# From csp-infra-postgres, as the instance administrator. See what failed, by relay (source: booking, auth, concessions, ticketing_fulfillment):
 docker compose --env-file env/<environment>.env exec postgres psql -U "$PG_ADMIN_USER" -d "$PG_DATABASE"   -c "SELECT source, status, count(*), min(last_error) FROM worker.outbox_relay_state WHERE status LIKE 'FAILED%' GROUP BY 1, 2"
 # Replay one relay once its queues exist (the next run, within seconds, publishes them):
 docker compose --env-file env/<environment>.env exec postgres psql -U "$PG_ADMIN_USER" -d "$PG_DATABASE"   -c "UPDATE worker.outbox_relay_state SET status = 'PENDING', attempt_count = 0, next_attempt_at = now() WHERE source = 'auth' AND status = 'FAILED_PERMANENT'"
