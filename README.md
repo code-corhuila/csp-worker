@@ -64,6 +64,25 @@ It has its own flag, its own PostgreSQL advisory lock and its own broker connect
 - One relay instance per environment: the lock of the auth relay is separate from the booking one, and an instance that does not get it skips the run.
   It needs the migration of `db/` like the booking relay, and the same `RELAY_*` variables.
 
+### Starting the relays and replaying events that failed for good
+
+Order of start-up in a composed environment (`csp-infra-postgres`): the broker healthy, the schema `worker` migrated
+(`worker-db-migrate`), the services that consume the events running with their queues declared, and only then the flag of
+the relay (`AUTH_OUTBOX_RELAY_ENABLED`, `CONCESSIONS_OUTBOX_RELAY_ENABLED`, `TICKETING_OUTBOX_RELAY_ENABLED`, `OUTBOX_RELAY_ENABLED`).
+A relay turned on before the queues exist does not lose events: each one is marked `FAILED_PERMANENT` on its first attempt with
+`PublishException: the message is unroutable: <routing key>`, stays in its outbox and waits for an operator. Once the queues
+exist, replay them (tested with the auth relay: two events failed this way and, after the replay, both reached the consumer once):
+
+```bash
+# From csp-infra-postgres, as the instance administrator. See what failed, by relay (source: booking, auth, concessions, ticketing):
+docker compose --env-file env/<environment>.env exec postgres psql -U "$PG_ADMIN_USER" -d "$PG_DATABASE"   -c "SELECT source, status, count(*), min(last_error) FROM worker.outbox_relay_state WHERE status LIKE 'FAILED%' GROUP BY 1, 2"
+# Replay one relay once its queues exist (the next run, within seconds, publishes them):
+docker compose --env-file env/<environment>.env exec postgres psql -U "$PG_ADMIN_USER" -d "$PG_DATABASE"   -c "UPDATE worker.outbox_relay_state SET status = 'PENDING', attempt_count = 0, next_attempt_at = now() WHERE source = 'auth' AND status = 'FAILED_PERMANENT'"
+```
+
+A replayed event keeps its `eventId`, so a consumer that already processed it ignores it. Do not replay `FAILED_EXHAUSTED`
+rows (20 attempts used) before the cause (broker down, wrong exchange) is fixed.
+
 ### Concessions outbox relay
 
 Same relay, reading `concessions.outbox_event` (role `concessions_outbox_reader`, granted by `csp-concessions-db` to `worker_app`), with its own publication
