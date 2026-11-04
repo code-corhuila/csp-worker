@@ -7,18 +7,20 @@ package co.edu.corhuila.csp.worker.application.port.out;
 public interface ConcessionsOrdersApi {
 
     /**
-     * Calls {@code POST /internal/orders/by-reservation/{reservationId}/confirm}.
+     * Calls {@code POST /internal/orders/by-reservation/{reservationId}/confirm}. {@code eventId} is the
+     * {@code eventId} of the Booking event, sent as {@code X-Event-Id} so a redelivery changes nothing (ADR-063); an
+     * empty one sends no header.
      *
      * @throws OrdersApiException when the service did not accept it
      */
-    void confirmByReservation(String reservationId, String correlationId);
+    void confirmByReservation(String reservationId, String eventId, String correlationId);
 
     /**
      * Calls {@code POST /internal/orders/by-reservation/{reservationId}/release}.
      *
      * @throws OrdersApiException when the service did not accept it
      */
-    void releaseByReservation(String reservationId, String correlationId);
+    void releaseByReservation(String reservationId, String eventId, String correlationId);
 
     /**
      * Calls {@code POST /internal/orders/expire}: the service releases up to {@code batchSize} orders without a
