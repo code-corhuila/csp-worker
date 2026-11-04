@@ -25,12 +25,14 @@ import org.junit.jupiter.api.Test;
 class ConcessionsOrdersClientTest {
 
     private static final String CONTEXT = "/api/v1/concessions";
+    private static final String EVENT = "55555555-5555-4555-8555-555555555555";
     private static final String RESERVATION = "44444444-4444-4444-8444-444444444444";
 
     private HttpServer server;
     private final List<String> paths = new CopyOnWriteArrayList<>();
     private final List<String> authorizations = new CopyOnWriteArrayList<>();
     private final List<String> correlations = new CopyOnWriteArrayList<>();
+    private final List<String> eventIds = new CopyOnWriteArrayList<>();
     private final List<Integer> answers = new CopyOnWriteArrayList<>();
     private final List<String> bodies = new CopyOnWriteArrayList<>();
     private final List<String> contentTypes = new CopyOnWriteArrayList<>();
@@ -42,6 +44,7 @@ class ConcessionsOrdersClientTest {
             paths.add(exchange.getRequestMethod() + " " + exchange.getRequestURI().getPath());
             authorizations.add(exchange.getRequestHeaders().getFirst("Authorization"));
             correlations.add(exchange.getRequestHeaders().getFirst("X-Correlation-Id"));
+            eventIds.add(String.valueOf(exchange.getRequestHeaders().getFirst("X-Event-Id")));
             bodies.add(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
             contentTypes.add(String.valueOf(exchange.getRequestHeaders().getFirst("Content-Type")));
             int status = answers.isEmpty() ? 204 : answers.remove(0);
@@ -65,16 +68,24 @@ class ConcessionsOrdersClientTest {
 
     @Test
     void confirmingCallsTheRouteBehindTheContextPathWithTheTokenAndTheCorrelationId() {
-        client().confirmByReservation(RESERVATION, "run-1");
+        client().confirmByReservation(RESERVATION, EVENT, "run-1");
 
         assertEquals(List.of("POST " + CONTEXT + "/internal/orders/by-reservation/" + RESERVATION + "/confirm"), paths);
         assertEquals(List.of("Bearer service-token"), authorizations);
         assertEquals(List.of("run-1"), correlations);
+        assertEquals(List.of(EVENT), eventIds);
+    }
+
+    @Test
+    void anEventWithoutAnIdSendsNoEventHeader() {
+        client().releaseByReservation(RESERVATION, "", "run-0");
+
+        assertEquals(List.of("null"), eventIds);
     }
 
     @Test
     void releasingCallsItsOwnRoute() {
-        client().releaseByReservation(RESERVATION, "run-2");
+        client().releaseByReservation(RESERVATION, EVENT, "run-2");
 
         assertEquals(List.of("POST " + CONTEXT + "/internal/orders/by-reservation/" + RESERVATION + "/release"), paths);
     }
@@ -105,7 +116,7 @@ class ConcessionsOrdersClientTest {
     void aBusyOrFailingServiceIsRetriedUntilItRecovers() {
         answers.addAll(List.of(503, 429));
 
-        client().confirmByReservation(RESERVATION, "run-3");
+        client().confirmByReservation(RESERVATION, EVENT, "run-3");
 
         assertEquals(3, paths.size());
     }
@@ -115,7 +126,7 @@ class ConcessionsOrdersClientTest {
         answers.addAll(List.of(500, 500, 500, 500, 500));
 
         OrdersApiException failure = assertThrows(OrdersApiException.class,
-                () -> client().confirmByReservation(RESERVATION, "run-4"));
+                () -> client().confirmByReservation(RESERVATION, EVENT, "run-4"));
 
         assertTrue(failure.retryable());
         assertEquals(3, paths.size());
@@ -128,7 +139,7 @@ class ConcessionsOrdersClientTest {
             answers.add(status);
 
             OrdersApiException failure = assertThrows(OrdersApiException.class,
-                    () -> client().confirmByReservation(RESERVATION, "run-5"));
+                    () -> client().confirmByReservation(RESERVATION, EVENT, "run-5"));
 
             assertFalse(failure.retryable(), "status " + status);
             assertEquals(1, paths.size());
@@ -142,7 +153,7 @@ class ConcessionsOrdersClientTest {
             answers.add(status);
 
             OrdersApiException failure = assertThrows(OrdersApiException.class,
-                    () -> client().releaseByReservation(RESERVATION, "run-6"));
+                    () -> client().releaseByReservation(RESERVATION, EVENT, "run-6"));
 
             assertTrue(failure.retryable(), "status " + status);
             assertEquals(1, paths.size());
@@ -154,7 +165,7 @@ class ConcessionsOrdersClientTest {
         server.stop(0);
 
         OrdersApiException failure = assertThrows(OrdersApiException.class,
-                () -> client().confirmByReservation(RESERVATION, "run-7"));
+                () -> client().confirmByReservation(RESERVATION, EVENT, "run-7"));
 
         assertTrue(failure.retryable());
     }
