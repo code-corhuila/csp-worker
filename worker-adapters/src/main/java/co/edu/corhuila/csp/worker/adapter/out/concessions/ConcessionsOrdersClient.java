@@ -52,13 +52,13 @@ public class ConcessionsOrdersClient implements ConcessionsOrdersApi {
     }
 
     @Override
-    public void confirmByReservation(String reservationId, String correlationId) {
-        post(reservationId, "confirm", correlationId);
+    public void confirmByReservation(String reservationId, String eventId, String correlationId) {
+        post(reservationId, "confirm", eventId, correlationId);
     }
 
     @Override
-    public void releaseByReservation(String reservationId, String correlationId) {
-        post(reservationId, "release", correlationId);
+    public void releaseByReservation(String reservationId, String eventId, String correlationId) {
+        post(reservationId, "release", eventId, correlationId);
     }
 
     @Override
@@ -74,8 +74,12 @@ public class ConcessionsOrdersClient implements ConcessionsOrdersApi {
         }
     }
 
-    private void post(String reservationId, String action, String correlationId) {
-        send(post(ROUTE + reservationId + "/" + action, correlationId).POST(HttpRequest.BodyPublishers.noBody()));
+    private void post(String reservationId, String action, String eventId, String correlationId) {
+        HttpRequest.Builder request = post(ROUTE + reservationId + "/" + action, correlationId);
+        if (!eventId.isBlank()) {
+            request.header("X-Event-Id", eventId);
+        }
+        send(request.POST(HttpRequest.BodyPublishers.noBody()));
     }
 
     /** A request to a route of the service with the token of the worker, read now because it may be rotated. */

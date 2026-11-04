@@ -9,6 +9,7 @@ and is tagged `v<version>` once it is merged.
 ## [Unreleased]
 
 ### Added
+- HU-CONCESSIONS-005: the Concessions client sends the `eventId` of the Booking event as `X-Event-Id` on the confirmation and the release, so the service records it in its inbox and a redelivered event changes nothing (ADR-063). An event without an id sends no header.
 
 - README section on the start-up order of the outbox relays and on replaying the events that failed for good (`FAILED_PERMANENT`), with the commands for the instance administrator. Tested with the auth relay turned on before the consumers declared their queues.
 

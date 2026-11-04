@@ -101,8 +101,8 @@ public class ReservationEventsJob implements Job {
 
     private void settle(ReservationEvent event, String correlationId) {
         switch (event.type()) {
-            case BOOKING_CONFIRMED -> api.confirmByReservation(event.reservationId(), correlationId);
-            case RESERVATION_EXPIRED -> api.releaseByReservation(event.reservationId(), correlationId);
+            case BOOKING_CONFIRMED -> api.confirmByReservation(event.reservationId(), event.eventId(), correlationId);
+            case RESERVATION_EXPIRED -> api.releaseByReservation(event.reservationId(), event.eventId(), correlationId);
         }
     }
 

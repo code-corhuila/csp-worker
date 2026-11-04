@@ -58,8 +58,8 @@ class ReservationEventsJobTest {
         JobResult result = job(10).run();
 
         assertEquals(new JobResult(1, 0), result);
-        verify(api).confirmByReservation(org.mockito.ArgumentMatchers.eq(RESERVATION), anyString());
-        verify(api, never()).releaseByReservation(anyString(), anyString());
+        verify(api).confirmByReservation(org.mockito.ArgumentMatchers.eq(RESERVATION), org.mockito.ArgumentMatchers.eq("event-0"), anyString());
+        verify(api, never()).releaseByReservation(anyString(), anyString(), anyString());
         assertEquals("ack", delivery.outcome);
     }
 
@@ -70,7 +70,7 @@ class ReservationEventsJobTest {
         JobResult result = job(10).run();
 
         assertEquals(new JobResult(1, 0), result);
-        verify(api).releaseByReservation(org.mockito.ArgumentMatchers.eq(RESERVATION), anyString());
+        verify(api).releaseByReservation(org.mockito.ArgumentMatchers.eq(RESERVATION), anyString(), anyString());
         assertEquals("ack", delivery.outcome);
     }
 
@@ -83,8 +83,8 @@ class ReservationEventsJobTest {
 
         ArgumentCaptor<String> confirm = ArgumentCaptor.forClass(String.class);
         ArgumentCaptor<String> release = ArgumentCaptor.forClass(String.class);
-        verify(api).confirmByReservation(anyString(), confirm.capture());
-        verify(api).releaseByReservation(anyString(), release.capture());
+        verify(api).confirmByReservation(anyString(), anyString(), confirm.capture());
+        verify(api).releaseByReservation(anyString(), anyString(), release.capture());
         assertEquals(confirm.getValue(), release.getValue());
     }
 
@@ -93,7 +93,7 @@ class ReservationEventsJobTest {
         FakeDelivery refused = deliver(Type.BOOKING_CONFIRMED);
         FakeDelivery fine = deliver(Type.RESERVATION_EXPIRED);
         doThrow(new OrdersApiException("the order is CANCELLED and cannot be changed", false))
-                .when(api).confirmByReservation(anyString(), anyString());
+                .when(api).confirmByReservation(anyString(), anyString(), anyString());
 
         JobResult result = job(10).run();
 
@@ -111,8 +111,8 @@ class ReservationEventsJobTest {
 
         assertEquals(new JobResult(0, 1), result);
         assertEquals("reject", malformed.outcome);
-        verify(api, never()).confirmByReservation(anyString(), anyString());
-        verify(api, never()).releaseByReservation(anyString(), anyString());
+        verify(api, never()).confirmByReservation(anyString(), anyString(), anyString());
+        verify(api, never()).releaseByReservation(anyString(), anyString(), anyString());
     }
 
     @Test
@@ -120,14 +120,14 @@ class ReservationEventsJobTest {
         FakeDelivery first = deliver(Type.BOOKING_CONFIRMED);
         FakeDelivery second = deliver(Type.BOOKING_CONFIRMED);
         doThrow(new OrdersApiException("the concessions service is unreachable", true))
-                .when(api).confirmByReservation(anyString(), anyString());
+                .when(api).confirmByReservation(anyString(), anyString(), anyString());
 
         JobResult result = job(10).run();
 
         assertEquals(new JobResult(0, 1), result);
         assertEquals("requeue", first.outcome);
         assertEquals(null, second.outcome);
-        verify(api, times(1)).confirmByReservation(anyString(), anyString());
+        verify(api, times(1)).confirmByReservation(anyString(), anyString(), anyString());
     }
 
     @Test
