@@ -1,6 +1,7 @@
 package co.edu.corhuila.csp.worker.adapter.out.amqp;
 
 import co.edu.corhuila.csp.worker.adapter.out.outbox.RelayDomain;
+import co.edu.corhuila.csp.worker.application.port.out.DependencyProbe;
 import co.edu.corhuila.csp.worker.application.port.out.EventPublisher;
 import co.edu.corhuila.csp.worker.application.port.out.OutboxEvent;
 import co.edu.corhuila.csp.worker.application.port.out.PublishException;
@@ -61,6 +62,11 @@ public class AmqpEventPublisher implements EventPublisher, AutoCloseable {
         this.exchange = exchange;
         this.domain = domain;
         this.confirmTimeoutMillis = confirmTimeout.toMillis();
+    }
+
+    /** The readiness probe of the broker this adapter talks to (ADR-014). */
+    public DependencyProbe brokerProbe() {
+        return new BrokerDependencyProbe(factory);
     }
 
     /** {@code cine.<domain>.<event-type-in-kebab-case>.v<version>}, as {@code events.md} lists them. */
