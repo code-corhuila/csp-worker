@@ -1,8 +1,19 @@
 # csp-worker
 
 Scheduled background jobs for the CineSync Platform (Norma 4.3). The worker runs jobs that no one
-asks for: expiration sweeps, notifications, reindexation. It exposes no business interface
-(Norma 5.7.1 admits at most a health endpoint, which is not implemented yet: code-corhuila/csp-worker#18).
+asks for: expiration sweeps, notifications, reindexation. It exposes no business interface:
+Norma 5.7.1 admits only a health endpoint, which is its only HTTP point (see "Health").
+
+## Health
+
+`GET /health` answers `200` with `{"status":"UP"}` and has no dependencies: it only says that the process answers, and the healthcheck
+of the container calls it. `GET /health/ready` asks PostgreSQL and RabbitMQ for the relays that are enabled (ADR-014): one probe per
+database and per broker connection that was composed, each with its own connection and a 2 s limit (5 s for the broker), so a slow
+dependency does not hold the request. It answers `200` with `{"status":"UP","dependencies":{"postgresql":"UP","rabbitmq":"UP"}}`, or
+`503` with `"DOWN"` for the kind that does not answer; a worker with no relay enabled depends on neither and answers `200` with no
+dependencies. Neither answer says anything else: no address, login or error text; the cause is in the log (`readiness: ... does not answer`).
+There is no `/metrics` endpoint, because the norm admits only the health point: the metrics and the alerts of the relay come from the
+state table `worker.outbox_relay_state` (see `csp-infra-postgres`).
 
 ## Jobs
 

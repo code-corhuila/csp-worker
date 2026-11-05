@@ -67,6 +67,14 @@ services:
       RELAY_DATABASE_PASSWORD: ${WORKER_APP_PASSWORD:-}
       RELAY_AMQP_URL: ${RELAY_AMQP_URL:-}
       RELAY_AMQP_EXCHANGE: ${RELAY_AMQP_EXCHANGE:-cine.events}
+    # /health has no dependencies (ADR-014, Norma 5.7.1): it only says that the process answers. The platform
+    # reads /health/ready, which asks PostgreSQL and RabbitMQ for the relays that are enabled. The JRE image ships curl.
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/health"]
+      interval: 15s
+      timeout: 3s
+      retries: 3
+      start_period: 40s
     networks:
       - platform
     restart: unless-stopped
