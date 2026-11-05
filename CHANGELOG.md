@@ -9,6 +9,9 @@ and is tagged `v<version>` once it is merged.
 ## [Unreleased]
 
 ### Added
+- The health point of the worker (ADR-014, Norma 5.7.1, `code-corhuila/csp-worker#25`): `GET /health` without dependencies and `GET /health/ready`, which asks PostgreSQL and RabbitMQ
+  for every relay that is composed (`200` or `503`, only up or down in the answer, a 2 s limit per probe and the cause in the log). It is the only HTTP point of the worker: there is no
+  `/metrics`. The compose of the worker gets a healthcheck on `/health`. A README section explains both.
 - HU-CONCESSIONS-005: the Concessions client sends the `eventId` of the Booking event as `X-Event-Id` on the confirmation and the release, so the service records it in its inbox and a redelivered event changes nothing (ADR-063). An event without an id sends no header.
 
 - README section on the start-up order of the outbox relays and on replaying the events that failed for good (`FAILED_PERMANENT`), with the commands for the instance administrator. Tested with the auth relay turned on before the consumers declared their queues.
