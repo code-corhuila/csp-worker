@@ -1,5 +1,6 @@
 package co.edu.corhuila.csp.worker.adapter.out.amqp;
 
+import co.edu.corhuila.csp.worker.application.port.out.DependencyProbe;
 import co.edu.corhuila.csp.worker.application.port.out.ReservationEvent;
 import co.edu.corhuila.csp.worker.application.port.out.ReservationEvent.Type;
 import co.edu.corhuila.csp.worker.application.port.out.ReservationEventQueue;
@@ -52,6 +53,11 @@ public class AmqpReservationEvents implements ReservationEventQueue, AutoCloseab
         this.factory = factory;
         this.exchange = exchange;
         this.deadLetterExchange = deadLetterExchange;
+    }
+
+    /** The readiness probe of the broker this adapter talks to (ADR-014). */
+    public DependencyProbe brokerProbe() {
+        return new BrokerDependencyProbe(factory);
     }
 
     @Override
