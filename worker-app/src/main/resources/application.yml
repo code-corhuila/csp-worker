@@ -66,6 +66,11 @@ worker:
     interval-seconds: ${DISPATCH_TICKET_EMAILS_EVERY:30}
     batch-size: ${DISPATCH_TICKET_EMAILS_BATCH_SIZE:50}
     run-timeout-seconds: ${DISPATCH_TICKET_EMAILS_RUN_TIMEOUT:60}
+  # Asks the ticketing service to create the warnings of the holds about to expire (HU-TICKETING-005,
+  # notification HOLD_EXPIRY_WARNING). Off until the service has the operation.
+  hold-expiry-warnings:
+    enabled: ${HOLD_EXPIRY_WARNINGS_ENABLED:false}
+    interval-seconds: ${HOLD_EXPIRY_WARNINGS_EVERY:30}
   # Renders the PDF of the tickets that wait for it and stores it in the object storage (HU-TICKETING-002, ADR-057,
   # ADR-058). Off until the service has the operations and the storage exists.
   render-ticket-pdfs:
