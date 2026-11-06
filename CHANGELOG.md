@@ -9,6 +9,7 @@ and is tagged `v<version>` once it is merged.
 ## [Unreleased]
 
 ### Added
+- Hold expiry warnings (HU-TICKETING-005, `code-corhuila/csp-worker#68`): `hold-expiry-warnings` calls `POST /internal/notifications/hold-expiry-warnings?limit=100` on the ticketing service once per run, with the service token and the correlation id of the run, so the service creates the `HOLD_EXPIRY_WARNING` notifications that are due. A failure or a timeout is logged and the next run asks again. Off by default (`HOLD_EXPIRY_WARNINGS_ENABLED=false`, `HOLD_EXPIRY_WARNINGS_EVERY`, 30 seconds); `deploy/compose.yml`, `.env.example` and the README carry the variables.
 - The health point of the worker (ADR-014, Norma 5.7.1, `code-corhuila/csp-worker#25`): `GET /health` without dependencies and `GET /health/ready`, which asks PostgreSQL and RabbitMQ
   for every relay that is composed (`200` or `503`, only up or down in the answer, a 2 s limit per probe and the cause in the log). It is the only HTTP point of the worker: there is no
   `/metrics`. The compose of the worker gets a healthcheck on `/health`. A README section explains both.

@@ -6,11 +6,13 @@ import co.edu.corhuila.csp.worker.application.port.out.BookingExpireHoldsApi;
 import co.edu.corhuila.csp.worker.application.port.out.ConcessionsOrdersApi;
 import co.edu.corhuila.csp.worker.application.port.out.TicketPdfStorage;
 import co.edu.corhuila.csp.worker.application.port.out.TicketingDispatchApi;
+import co.edu.corhuila.csp.worker.application.port.out.TicketingHoldExpiryWarningsApi;
 import co.edu.corhuila.csp.worker.application.port.out.TicketingPdfApi;
 import co.edu.corhuila.csp.worker.application.port.out.pdf.TicketPdfGeneratorPort;
 import co.edu.corhuila.csp.worker.application.usecase.DispatchTicketEmailsJob;
 import co.edu.corhuila.csp.worker.application.usecase.ExpireConcessionsOrdersJob;
 import co.edu.corhuila.csp.worker.application.usecase.ExpireHoldsJob;
+import co.edu.corhuila.csp.worker.application.usecase.HoldExpiryWarningsJob;
 import co.edu.corhuila.csp.worker.application.usecase.PurgeAuthJob;
 import co.edu.corhuila.csp.worker.application.usecase.RenderTicketPdfsJob;
 import java.time.Clock;
@@ -64,6 +66,13 @@ public class WorkerConfiguration {
             @Value("${worker.dispatch-ticket-emails.interval-seconds:30}") long intervalSeconds) {
         return new ScheduledJob(new DispatchTicketEmailsJob(ticketingApi, batchSize,
                 Duration.ofSeconds(runTimeoutSeconds), Clock.systemUTC()), Duration.ofSeconds(intervalSeconds));
+    }
+
+    @Bean
+    @ConditionalOnProperty(prefix = "worker.hold-expiry-warnings", name = "enabled", havingValue = "true")
+    ScheduledJob holdExpiryWarningsJob(TicketingHoldExpiryWarningsApi ticketingApi,
+            @Value("${worker.hold-expiry-warnings.interval-seconds:30}") long intervalSeconds) {
+        return new ScheduledJob(new HoldExpiryWarningsJob(ticketingApi), Duration.ofSeconds(intervalSeconds));
     }
 
     @Bean
