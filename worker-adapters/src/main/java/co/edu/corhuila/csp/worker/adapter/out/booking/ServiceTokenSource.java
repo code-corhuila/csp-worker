@@ -19,7 +19,8 @@ import org.springframework.stereotype.Component;
 @Component
 @ConditionalOnExpression("${worker.expire-holds.enabled:true} or ${worker.purge-auth.enabled:false}"
         + " or ${worker.concessions-reservation-events.enabled:false} or ${worker.expire-concessions-orders.enabled:false}"
-        + " or ${worker.dispatch-ticket-emails.enabled:false} or ${worker.render-ticket-pdfs.enabled:false}")
+        + " or ${worker.dispatch-ticket-emails.enabled:false} or ${worker.hold-expiry-warnings.enabled:false}"
+        + " or ${worker.render-ticket-pdfs.enabled:false}")
 public class ServiceTokenSource {
 
     private final String fixedToken;
