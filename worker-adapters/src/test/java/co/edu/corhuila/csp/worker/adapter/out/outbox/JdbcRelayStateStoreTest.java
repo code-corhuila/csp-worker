@@ -30,11 +30,26 @@ class JdbcRelayStateStoreTest {
     @BeforeEach
     void setUp() {
         jdbc = PostgresSupport.freshDatabase();
-        store = new JdbcRelayStateStore(jdbc);
+        store = new JdbcRelayStateStore(jdbc, RelayDomain.BOOKING);
     }
 
     private Map<String, Object> row(UUID id) {
         return jdbc.queryForMap("SELECT * FROM worker.outbox_relay_state WHERE event_id = ?", id);
+    }
+
+    @Test
+    void theStateOfTwoDomainsNeverCollides() {
+        JdbcRelayStateStore auth = new JdbcRelayStateStore(jdbc, RelayDomain.AUTH);
+        store.track(List.of(A), NOW);
+        auth.track(List.of(B), NOW);
+        store.saveCursor(new OutboxPosition(NOW, A));
+        auth.saveCursor(new OutboxPosition(NOW.plusSeconds(60), B));
+
+        assertEquals(List.of(A), store.duePending(NOW, 10).stream().map(PendingEvent::eventId).toList());
+        assertEquals(List.of(B), auth.duePending(NOW, 10).stream().map(PendingEvent::eventId).toList());
+        assertEquals(new OutboxPosition(NOW, A), store.cursor().orElseThrow());
+        assertEquals(new OutboxPosition(NOW.plusSeconds(60), B), auth.cursor().orElseThrow());
+        assertEquals("auth", row(B).get("source"));
     }
 
     @Test

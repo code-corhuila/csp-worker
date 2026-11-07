@@ -9,6 +9,7 @@ import co.edu.corhuila.csp.worker.application.port.out.PendingEvent;
 import co.edu.corhuila.csp.worker.application.port.out.PublishException;
 import co.edu.corhuila.csp.worker.application.port.out.RelayStateStore;
 import co.edu.corhuila.csp.worker.application.port.out.RelayStatus;
+import co.edu.corhuila.csp.worker.application.port.out.RunLock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
@@ -193,6 +194,46 @@ final class RelayFakes {
         public void markFailed(UUID eventId, RelayStatus status, int attemptCount, String lastError) {
             Row row = rows.get(eventId);
             rows.put(eventId, new Row(status, attemptCount, row.nextAttemptAt(), null, lastError));
+        }
+    }
+
+    /** The instance lock: grants it or refuses it, and counts the leases it hands out and gets back. */
+    static final class Lock implements RunLock {
+        private boolean granted = true;
+        private RuntimeException failure;
+        private int acquired;
+        private int released;
+
+        void refuse() {
+            this.granted = false;
+        }
+
+        void grant() {
+            this.granted = true;
+        }
+
+        void failWith(RuntimeException failure) {
+            this.failure = failure;
+        }
+
+        int acquired() {
+            return acquired;
+        }
+
+        int released() {
+            return released;
+        }
+
+        @Override
+        public Optional<Lease> tryAcquire() {
+            if (failure != null) {
+                throw failure;
+            }
+            if (!granted) {
+                return Optional.empty();
+            }
+            acquired++;
+            return Optional.of(() -> released++);
         }
     }
 

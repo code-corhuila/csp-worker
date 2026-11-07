@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import co.edu.corhuila.csp.worker.adapter.in.scheduler.JobRunner;
 import co.edu.corhuila.csp.worker.adapter.in.scheduler.ScheduledJob;
+import co.edu.corhuila.csp.worker.adapter.out.auth.AuthPurgeClient;
 import co.edu.corhuila.csp.worker.adapter.out.booking.ServiceTokenSource;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -18,6 +19,7 @@ import org.springframework.context.ApplicationContext;
  */
 @SpringBootTest(properties = {
         "worker.expire-holds.enabled=false",
+        "worker.purge-auth.enabled=false",
         "SERVICE_TOKEN=",
         "SERVICE_TOKEN_FILE=",
         "server.port=0"})
@@ -30,6 +32,7 @@ class JobFlagsWiringTest {
     void anInstanceWithEveryJobOffStartsWithoutJobsAndWithoutAServiceToken() {
         assertTrue(context.getBeansOfType(ScheduledJob.class).isEmpty());
         assertTrue(context.getBeansOfType(ServiceTokenSource.class).isEmpty());
+        assertTrue(context.getBeansOfType(AuthPurgeClient.class).isEmpty());
         assertEquals(1, context.getBeansOfType(JobRunner.class).size());
     }
 }
