@@ -171,7 +171,7 @@ enough for the concession order to have arrived; the worker renders each one wit
 reference, and the service then issues the ticket (`TicketIssued`) and lets the email go out.
 
 - **Off by default** (`RENDER_TICKET_PDFS_ENABLED=false`). It needs `SERVICE_TOKEN` or `SERVICE_TOKEN_FILE`, `TICKETING_API_URL` and the storage variables below.
-- **The writer account** (`ticketing_pdf_writer`, `OBJECT_STORAGE_ACCESS_KEY` and `OBJECT_STORAGE_SECRET_KEY`) may only put and get `tickets/*`; the worker never lists or deletes. The secret comes from the secrets of the environment.
+- **The writer account** (`ticketing_pdf_writer`, `PDF_STORAGE_ACCESS_KEY` and `PDF_STORAGE_SECRET_KEY`) may only put and get `tickets/*`; the worker never lists or deletes. The secret comes from the secrets of the environment (`TICKETING_PDF_WRITER_SECRET`). The worker does not read `OBJECT_STORAGE_*`: in the env file that the platform shares, those are the read-only account of `csp-ticketing-api`, and the worker would write with the wrong account.
 - **A key is immutable:** an object that already exists is kept and only its reference is reported again, so a retry never creates a second version. A PDF over 1 MiB is refused.
 - **A ticket that fails** (render, storage or report) is logged with its id and the correlation id of the run, skipped for the rest of the run and tried again in the next one; the others go on. There is no limit on the retries yet, so a ticket that always fails stays at the front of the list.
 - **The routes are at the root of the service** (`/internal/tickets/...`), so `TICKETING_API_URL` has no context path. Authentication: see `csp-ticketing-api#12`.
@@ -247,9 +247,10 @@ that carries `BookingConfirmed` from Booking to the broker, so that flow has a w
 | `RENDER_TICKET_PDFS_EVERY` | Scheduler interval in seconds of `render-ticket-pdfs` | `30` |
 | `RENDER_TICKET_PDFS_BATCH_SIZE` | Tickets asked per call, from 1 to 100; the worker refuses to start otherwise | `20` |
 | `RENDER_TICKET_PDFS_RUN_TIMEOUT` | Seconds a run may keep calling before it stops | `60` |
-| `OBJECT_STORAGE_URL` | S3 endpoint of the object storage, by its name on the platform network | `http://rustfs:9000` |
-| `OBJECT_STORAGE_ACCESS_KEY`, `OBJECT_STORAGE_SECRET_KEY` | The writer account of the bucket; both are required when the job is on | none |
-| `OBJECT_STORAGE_BUCKET` | Bucket of the ticket PDFs | `tickets` |
+| `PDF_STORAGE_URL` | S3 endpoint of the object storage, by its name on the platform network | `http://rustfs:9000` |
+| `PDF_STORAGE_ACCESS_KEY`, `PDF_STORAGE_SECRET_KEY` | The writer account of the bucket; both are required when the job is on. `deploy/compose.yml` sets the first to `ticketing_pdf_writer` and the second from `TICKETING_PDF_WRITER_SECRET` | none |
+| `PDF_STORAGE_BUCKET` | Bucket of the ticket PDFs; `deploy/compose.yml` takes it from `TICKETS_BUCKET` | `tickets` |
+| `PDF_STORAGE_REGION` | Region the S3 client signs with, so it never asks for the location of the bucket | `us-east-1` |
 | `CONCESSIONS_OUTBOX_RELAY_ENABLED` | Turns the concessions outbox relay on; it needs the same database and broker variables, and the consumer of Ticketing declared first | `false` |
 | `CONCESSIONS_OUTBOX_RELAY_EVERY` | Scheduler interval in seconds of `concessions-outbox-relay` | `5` |
 | `CONCESSIONS_OUTBOX_RELAY_EVENT_TYPES` | Comma-separated concessions event types to publish: `ConcessionOrderCreated`, `ConcessionStockReserved`, `ConcessionOrderConfirmed`, `ConcessionOrderCancelled` | `ConcessionOrderConfirmed` |
