@@ -107,12 +107,12 @@ concessions:
 
 # The private bucket of the ticket PDFs, written with the writer account (ADR-058).
 object-storage:
-  url: ${OBJECT_STORAGE_URL:http://rustfs:9000}
-  access-key: ${OBJECT_STORAGE_ACCESS_KEY:}
-  secret-key: ${OBJECT_STORAGE_SECRET_KEY:}
-  bucket: ${OBJECT_STORAGE_BUCKET:tickets}
+  url: ${PDF_STORAGE_URL:http://rustfs:9000}
+  access-key: ${PDF_STORAGE_ACCESS_KEY:}
+  secret-key: ${PDF_STORAGE_SECRET_KEY:}
+  bucket: ${PDF_STORAGE_BUCKET:tickets}
   # Given to the client so that it never asks for the location of the bucket, which the writer account may not do.
-  region: ${OBJECT_STORAGE_REGION:us-east-1}
+  region: ${PDF_STORAGE_REGION:us-east-1}
 
 # The internal routes of Ticketing start at the root of the service, not under /api/v1/ticketing.
 ticketing:
