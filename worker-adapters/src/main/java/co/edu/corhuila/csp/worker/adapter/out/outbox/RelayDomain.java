@@ -21,7 +21,13 @@ public enum RelayDomain {
      * The concessions outbox, ADR-019 and ADR-045. The lock key is the ASCII of "cspoutbc". Its envelope is the
      * traced one of booking.
      */
-    CONCESSIONS("concessions", "concessions-service", 0x6373706F75746263L, true);
+    CONCESSIONS("concessions", "concessions-service", 0x6373706F75746263L, true),
+
+    /**
+     * The ticketing outbox, ADR-057. The lock key is the ASCII of "cspoutbt". Its envelope is the traced one of
+     * booking; the schema name is the one of its routing key, {@code cine.ticketing_fulfillment.ticket-issued.v1}.
+     */
+    TICKETING("ticketing_fulfillment", "ticketing-fulfillment-service", 0x6373706F75746274L, true);
 
     private final String schema;
     private final String envelopeSource;

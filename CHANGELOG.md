@@ -16,8 +16,11 @@ and is tagged `v<version>` once it is merged.
 
 - README section on the start-up order of the outbox relays and on replaying the events that failed for good (`FAILED_PERMANENT`), with the commands for the instance administrator. Tested with the auth relay turned on before the consumers declared their queues.
 
+- Outbox relay of Ticketing (HU-TICKETING-002, ADR-057): `ticketing-outbox-relay` publishes the `TicketIssued` events of `ticketing_fulfillment.outbox_event` to `cine.events` with the same at-least-once delivery, envelope check and backoff as the other relays, with routing key `cine.ticketing_fulfillment.ticket-issued.v1`, its own state key, lock and connection. Off by default (`TICKETING_OUTBOX_RELAY_ENABLED=false`, `TICKETING_OUTBOX_RELAY_EVERY`, `TICKETING_OUTBOX_RELAY_EVENT_TYPES`).
+
 ### Fixed
 
+- `develop` did not compile (HU-TICKETING-002): `GenerateTicketPdfJob` declared `name()` twice and its configuration used a `RelayDomain.TICKETING` that does not exist. The job was a draft (it built the ticket from random values and published again the Booking event it read) and contradicted ADR-057, which makes the worker ask `csp-ticketing-api` which tickets lack a PDF. The job, its configuration, its `generate-ticket-pdf` settings, the `TicketingApi` and `ObjectStoragePort` ports, their two adapters and the unused starters are removed. The PDF generator port and adapter stay for the real job.
 - The outbox relays no longer declare the exchange (HU-AUTH-004, ADR-036): the login `worker_relay` has `configure ^$`, so the declaration was refused and nothing was published. `AmqpEventPublisher` now checks that the exchange exists with a passive declaration and publishes; a missing exchange is a retryable failure that logs its name (no credential), reopens the connection and recovers when the exchange appears. An AMQP URL with an empty virtual host (ending in a bare `/`) stops the startup with a message that asks for `/%2F`.
 
 ### Added
