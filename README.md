@@ -26,6 +26,8 @@ state table `worker.outbox_relay_state` (see `csp-infra-postgres`).
 | `concessions-outbox-relay` | Every 5s, when enabled | Publishes the events of `concessions.outbox_event` that have a consumer to RabbitMQ, with the same delivery semantics ([ADR-019](https://github.com/code-corhuila/csp-docs/blob/main/05-architecture/decisions/records/ADR-019-outbox-relay-read-only-for-other-domains.md), [ADR-045](https://github.com/code-corhuila/csp-docs/blob/main/05-architecture/decisions/records/ADR-045-concessions-orders-stock-holds-and-reservation-events.md)) |
 | `ticketing-outbox-relay` | Every 5s, when enabled | Publishes the `TicketIssued` events of `ticketing_fulfillment.outbox_event` to RabbitMQ, with the same delivery semantics ([ADR-057](https://github.com/code-corhuila/csp-docs/blob/main/05-architecture/decisions/records/ADR-057-ticket-issuance-pdf-in-worker-and-delivery-retry.md)) |
 | `dispatch-ticket-emails` | Every 30s, when enabled | Calls `POST /internal/fulfillments/dispatch` on the ticketing service in batches of up to 100 deliveries until a batch comes back short, or the run is out of time (60s) or calls (100): the service sends the email of each ticket whose PDF exists and whose contact is known, and keeps the others pending with a growing delay (HU-TICKETING-002, [ADR-057](https://github.com/code-corhuila/csp-docs/blob/main/05-architecture/decisions/records/ADR-057-ticket-issuance-pdf-in-worker-and-delivery-retry.md)) |
+| `hold-expiry-warnings` | Every 30s, when enabled | Calls `POST /internal/notifications/hold-expiry-warnings?limit=100` on the ticketing service once per run, with the service token: the service creates the `HOLD_EXPIRY_WARNING` notification of each hold that is about to expire and answers `{"warned": n}`. Any other answer or a timeout is logged and the next run asks again (HU-TICKETING-005, scenario 2) |
+| `render-ticket-pdfs` | Every 30s, when enabled | Asks the ticketing service for the tickets without a PDF (`GET /internal/tickets/awaiting-pdf`), renders each one, stores it once in the private bucket `tickets` of the object storage under `tickets/{reservationId}/{ticketId}.pdf` and reports the reference (`POST /internal/tickets/{ticketId}/pdf`), which makes the service issue the ticket; batches of up to 20 until a short one, or the run is out of time (60s) or calls (100) (HU-TICKETING-002, [ADR-057](https://github.com/code-corhuila/csp-docs/blob/main/05-architecture/decisions/records/ADR-057-ticket-issuance-pdf-in-worker-and-delivery-retry.md), ADR-058) |
 | `concessions-reservation-events` | Every 5s, when enabled | Takes `BookingConfirmed` and `ReservationExpired` from the queues of Concessions and calls `POST /internal/orders/by-reservation/{reservationId}/confirm` or `.../release` on the concessions service, so the order of a reservation is confirmed or released when the reservation is (HU-CONCESSIONS-004, [ADR-045](https://github.com/code-corhuila/csp-docs/blob/main/05-architecture/decisions/records/ADR-045-concessions-orders-stock-holds-and-reservation-events.md)) |
 | `expire-concessions-orders` | Every 60s, when enabled | Calls `POST /internal/orders/expire` on the concessions service in batches of up to 100 orders until it reports no more, or the run is out of time (60s) or calls (100): it releases the orders without a reservation whose `ORDER_HOLD_MINUTES` ran out (HU-CONCESSIONS-004, [ADR-045](https://github.com/code-corhuila/csp-docs/blob/main/05-architecture/decisions/records/ADR-045-concessions-orders-stock-holds-and-reservation-events.md)) |
 
@@ -151,6 +153,29 @@ delay (1 minute, then 5) and gives up at the third attempt. Nothing else starts 
 - **The route is at the root of the service** (`/internal/fulfillments/dispatch`), so `TICKETING_API_URL` has no context path.
 - **Authentication:** the internal routes of Ticketing do not check the token yet (`csp-ticketing-api#12`); the worker sends it anyway.
 
+### Hold expiry warnings
+
+Asks the ticketing service to create the warnings of the holds that are about to expire (HU-TICKETING-005, scenario 2, notification `HOLD_EXPIRY_WARNING`).
+
+- **Off by default** (`HOLD_EXPIRY_WARNINGS_ENABLED=false`). It needs `SERVICE_TOKEN` or `SERVICE_TOKEN_FILE` like the other jobs that call a service.
+- **A run** makes one call, `POST /internal/notifications/hold-expiry-warnings?limit=100`, with the correlation id of the run, and logs the `warned` count of the answer. The connection and the
+  answer share the limit of `ticketing.api.timeout-seconds` (10 seconds); a network error, `429` or `5xx` is retried up to three times with backoff, and any other failure ends the run, is logged
+  and is asked again `HOLD_EXPIRY_WARNINGS_EVERY` seconds later. Nothing accumulates: runs never overlap in an instance.
+- **One warning per hold** is guaranteed by the service, not by the worker, so a second instance with the flag on is harmless.
+- **The route is at the root of the service**, so `TICKETING_API_URL` has no context path.
+
+### Ticket PDF rendering
+
+Renders the document of every ticket and stores it in the object storage (HU-TICKETING-002, ADR-057, ADR-058). The ticketing service lists the tickets without a PDF once they are old
+enough for the concession order to have arrived; the worker renders each one with iText and a QR code, writes it once to the bucket `tickets` of `csp-infra-rustfs` and reports the
+reference, and the service then issues the ticket (`TicketIssued`) and lets the email go out.
+
+- **Off by default** (`RENDER_TICKET_PDFS_ENABLED=false`). It needs `SERVICE_TOKEN` or `SERVICE_TOKEN_FILE`, `TICKETING_API_URL` and the storage variables below.
+- **The writer account** (`ticketing_pdf_writer`, `PDF_STORAGE_ACCESS_KEY` and `PDF_STORAGE_SECRET_KEY`) may only put and get `tickets/*`; the worker never lists or deletes. The secret comes from the secrets of the environment (`TICKETING_PDF_WRITER_SECRET`). The worker does not read `OBJECT_STORAGE_*`: in the env file that the platform shares, those are the read-only account of `csp-ticketing-api`, and the worker would write with the wrong account.
+- **A key is immutable:** an object that already exists is kept and only its reference is reported again, so a retry never creates a second version. A PDF over 1 MiB is refused.
+- **A ticket that fails** (render, storage or report) is logged with its id and the correlation id of the run, skipped for the rest of the run and tried again in the next one; the others go on. There is no limit on the retries yet, so a ticket that always fails stays at the front of the list.
+- **The routes are at the root of the service** (`/internal/tickets/...`), so `TICKETING_API_URL` has no context path. Authentication: see `csp-ticketing-api#12`.
+
 ### Light jobs and heavy jobs in one worker
 
 The worker is the home of every background process (Norma 4.3), and its jobs are not all alike:
@@ -165,7 +190,7 @@ The worker is the home of every background process (Norma 4.3), and its jobs are
 They live together under three rules that the code already follows:
 
 1. **One job, one flag, one thread.** Each job is a `ScheduledJob` with its own interval and its own thread, and it exists
-   only when its flag is on (`EXPIRE_HOLDS_ENABLED`, `PURGE_AUTH_ENABLED`, `OUTBOX_RELAY_ENABLED`, `AUTH_OUTBOX_RELAY_ENABLED`, `CONCESSIONS_OUTBOX_RELAY_ENABLED`, `TICKETING_OUTBOX_RELAY_ENABLED`, `CONCESSIONS_EVENTS_ENABLED`, `EXPIRE_CONCESSIONS_ORDERS_ENABLED`, and `DISPATCH_TICKET_EMAILS_ENABLED`). A slow job
+   only when its flag is on (`EXPIRE_HOLDS_ENABLED`, `PURGE_AUTH_ENABLED`, `OUTBOX_RELAY_ENABLED`, `AUTH_OUTBOX_RELAY_ENABLED`, `CONCESSIONS_OUTBOX_RELAY_ENABLED`, `TICKETING_OUTBOX_RELAY_ENABLED`, `RENDER_TICKET_PDFS_ENABLED`, `CONCESSIONS_EVENTS_ENABLED`, `EXPIRE_CONCESSIONS_ORDERS_ENABLED`, `DISPATCH_TICKET_EMAILS_ENABLED`, and `HOLD_EXPIRY_WARNINGS_ENABLED`). A slow job
    never delays the others, and an instance without `expire-holds` or `purge-auth` needs no `SERVICE_TOKEN`.
 2. **Same pattern for every job.** Ports in the core, adapters outside, a bound per run (Norma 5.7), retries with backoff
    and an idempotent effect, so a duplicate delivery is harmless. A new job reuses this pattern; it does not invent a new one.
@@ -216,6 +241,16 @@ that carries `BookingConfirmed` from Booking to the broker, so that flow has a w
 | `DISPATCH_TICKET_EMAILS_EVERY` | Scheduler interval in seconds of `dispatch-ticket-emails` | `30` |
 | `DISPATCH_TICKET_EMAILS_BATCH_SIZE` | Deliveries asked per call, from 1 to 100; the worker refuses to start otherwise | `50` |
 | `DISPATCH_TICKET_EMAILS_RUN_TIMEOUT` | Seconds a run may keep calling before it stops | `60` |
+| `HOLD_EXPIRY_WARNINGS_ENABLED` | Turns the warnings of the holds about to expire on; it needs `TICKETING_API_URL` and the service token | `false` |
+| `HOLD_EXPIRY_WARNINGS_EVERY` | Scheduler interval in seconds of `hold-expiry-warnings` | `30` |
+| `RENDER_TICKET_PDFS_ENABLED` | Turns the rendering of the ticket PDFs on; it needs `TICKETING_API_URL`, the service token and the object storage | `false` |
+| `RENDER_TICKET_PDFS_EVERY` | Scheduler interval in seconds of `render-ticket-pdfs` | `30` |
+| `RENDER_TICKET_PDFS_BATCH_SIZE` | Tickets asked per call, from 1 to 100; the worker refuses to start otherwise | `20` |
+| `RENDER_TICKET_PDFS_RUN_TIMEOUT` | Seconds a run may keep calling before it stops | `60` |
+| `PDF_STORAGE_URL` | S3 endpoint of the object storage, by its name on the platform network | `http://rustfs:9000` |
+| `PDF_STORAGE_ACCESS_KEY`, `PDF_STORAGE_SECRET_KEY` | The writer account of the bucket; both are required when the job is on. `deploy/compose.yml` sets the first to `ticketing_pdf_writer` and the second from `TICKETING_PDF_WRITER_SECRET` | none |
+| `PDF_STORAGE_BUCKET` | Bucket of the ticket PDFs; `deploy/compose.yml` takes it from `TICKETS_BUCKET` | `tickets` |
+| `PDF_STORAGE_REGION` | Region the S3 client signs with, so it never asks for the location of the bucket | `us-east-1` |
 | `CONCESSIONS_OUTBOX_RELAY_ENABLED` | Turns the concessions outbox relay on; it needs the same database and broker variables, and the consumer of Ticketing declared first | `false` |
 | `CONCESSIONS_OUTBOX_RELAY_EVERY` | Scheduler interval in seconds of `concessions-outbox-relay` | `5` |
 | `CONCESSIONS_OUTBOX_RELAY_EVENT_TYPES` | Comma-separated concessions event types to publish: `ConcessionOrderCreated`, `ConcessionStockReserved`, `ConcessionOrderConfirmed`, `ConcessionOrderCancelled` | `ConcessionOrderConfirmed` |
