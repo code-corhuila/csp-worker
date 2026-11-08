@@ -95,6 +95,7 @@ services:
       FLYWAY_SCHEMAS: worker
       FLYWAY_DEFAULT_SCHEMA: worker
       FLYWAY_CREATE_SCHEMAS: "true"
+      FLYWAY_CONNECT_RETRIES: "6"
     command: ["migrate"]
     networks: [platform]
 
