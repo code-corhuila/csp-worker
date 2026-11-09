@@ -118,7 +118,7 @@ and permanent failures; an unroutable message is a permanent failure.
 
 - **Off by default** (`TICKETING_OUTBOX_RELAY_ENABLED=false`). **Do not turn it on before the queue exists**: `csp-ticketing-api` declares a queue bound to
   `cine.ticketing_fulfillment.ticket-issued.v1`, otherwise every event is unroutable and fails for good.
-- **Database access:** the role `ticketing_outbox_reader` has to be granted to the login `worker_app` by the infrastructure of each environment; the migration only creates it.
+- **Database access:** the role `ticketing_outbox_reader` has to be granted to the login `worker_app`; `csp-ticketing-db` V013 does it (V007 only creates the role), and the login has to exist before that migration runs, which the instance init script of `csp-infra-postgres` guarantees. Without the grant the relay fails on every run with `permission denied for schema ticketing_fulfillment`.
 - **Events:** `TicketIssued` only; any other name in `TICKETING_OUTBOX_RELAY_EVENT_TYPES` stops the startup. Routing key `cine.ticketing_fulfillment.ticket-issued.v1`.
 - The envelope has `source` `ticketing-fulfillment-service`, `aggregateType` `Ticket` and the correlation id of the call that registered the PDF in `metadata`, so the relay requires them.
 - The relay does not guarantee the publication order. One relay instance per environment, enforced by the lock.
