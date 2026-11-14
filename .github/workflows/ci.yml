@@ -7,8 +7,8 @@ on:
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
-    # The tests of the outbox relay run against the real engines (Annex C): TEST_DATABASE_URL and
-    # TEST_AMQP_URL below turn them on.
+    # The tests of the outbox relay and of the PDF writer run against the real engines (Annex C):
+    # TEST_DATABASE_URL, TEST_AMQP_URL and TEST_S3_URL below turn them on.
     services:
       postgres:
         image: postgres:16-alpine
@@ -32,9 +32,24 @@ jobs:
           --health-interval 10s
           --health-timeout 10s
           --health-retries 12
+      rustfs:
+        image: rustfs/rustfs:1.0.4
+        env:
+          RUSTFS_ACCESS_KEY: ci-root
+          RUSTFS_SECRET_KEY: ci-root-secret
+        ports:
+          - 9000:9000
+        options: >-
+          --health-cmd "curl -fsS http://localhost:9000/health"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 12
     env:
       TEST_DATABASE_URL: jdbc:postgresql://localhost:5432/csp?user=postgres&password=postgres
       TEST_AMQP_URL: amqp://guest:guest@localhost:5672
+      TEST_S3_URL: http://localhost:9000
+      TEST_S3_ACCESS_KEY: ci-root
+      TEST_S3_SECRET_KEY: ci-root-secret
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4

@@ -18,6 +18,12 @@ worker:
   expire-holds:
     enabled: ${EXPIRE_HOLDS_ENABLED:true}
     interval-seconds: ${EXPIRE_EVERY:60}
+  # Asks the identity service to purge what it no longer needs (HU-AUTH-002, ADR-030). Off until it is wanted.
+  purge-auth:
+    enabled: ${PURGE_AUTH_ENABLED:false}
+    interval-seconds: ${PURGE_EVERY:3600}
+    batch-size: ${PURGE_BATCH_SIZE:500}
+    run-timeout-seconds: ${PURGE_RUN_TIMEOUT:60}
   # Publishes the booking outbox to RabbitMQ (ADR-014). Off until the platform has a broker.
   outbox-relay:
     enabled: ${OUTBOX_RELAY_ENABLED:false}
@@ -30,10 +36,88 @@ worker:
       url: ${RELAY_AMQP_URL:}
       exchange: ${RELAY_AMQP_EXCHANGE:cine.events}
       confirm-timeout-seconds: 5
+  # Publishes the auth outbox (ADR-019) with the login and broker above. Off until the consumers exist.
+  # Only the listed event types are published: UserRoleChanged has no consumer in the MVP.
+  auth-outbox-relay:
+    enabled: ${AUTH_OUTBOX_RELAY_ENABLED:false}
+    interval-seconds: ${AUTH_OUTBOX_RELAY_EVERY:5}
+    event-types: ${AUTH_OUTBOX_RELAY_EVENT_TYPES:UserRegistered,UserEmailChanged}
+  # Settles the concession order of a reservation when Booking confirms or expires it (HU-CONCESSIONS-004, ADR-045).
+  # It reads the queues of Concessions with the broker login of that service. Off until the broker exists.
+  concessions-reservation-events:
+    enabled: ${CONCESSIONS_EVENTS_ENABLED:false}
+    interval-seconds: ${CONCESSIONS_EVENTS_EVERY:5}
+    batch-size: ${CONCESSIONS_EVENTS_BATCH_SIZE:100}
+    run-timeout-seconds: ${CONCESSIONS_EVENTS_RUN_TIMEOUT:20}
+    amqp:
+      url: ${CONCESSIONS_AMQP_URL:}
+      exchange: ${CONCESSIONS_AMQP_EXCHANGE:cine.events}
+      dead-letter-exchange: ${CONCESSIONS_AMQP_DEAD_LETTER_EXCHANGE:cine.dlx}
+  # Asks the concessions service to release the orders without a reservation whose time ran out (HU-CONCESSIONS-004, ADR-045).
+  expire-concessions-orders:
+    enabled: ${EXPIRE_CONCESSIONS_ORDERS_ENABLED:false}
+    interval-seconds: ${EXPIRE_CONCESSIONS_ORDERS_EVERY:60}
+    batch-size: ${EXPIRE_CONCESSIONS_ORDERS_BATCH_SIZE:100}
+    run-timeout-seconds: ${EXPIRE_CONCESSIONS_ORDERS_RUN_TIMEOUT:60}
+  # Asks the ticketing service to send the emails of the tickets that are ready, and to retry the ones whose
+  # contact is not known yet (HU-TICKETING-002, ADR-057). Off until the service has the operation.
+  dispatch-ticket-emails:
+    enabled: ${DISPATCH_TICKET_EMAILS_ENABLED:false}
+    interval-seconds: ${DISPATCH_TICKET_EMAILS_EVERY:30}
+    batch-size: ${DISPATCH_TICKET_EMAILS_BATCH_SIZE:50}
+    run-timeout-seconds: ${DISPATCH_TICKET_EMAILS_RUN_TIMEOUT:60}
+  # Asks the ticketing service to create the warnings of the holds about to expire (HU-TICKETING-005,
+  # notification HOLD_EXPIRY_WARNING). Off until the service has the operation.
+  hold-expiry-warnings:
+    enabled: ${HOLD_EXPIRY_WARNINGS_ENABLED:false}
+    interval-seconds: ${HOLD_EXPIRY_WARNINGS_EVERY:30}
+  # Renders the PDF of the tickets that wait for it and stores it in the object storage (HU-TICKETING-002, ADR-057,
+  # ADR-058). Off until the service has the operations and the storage exists.
+  render-ticket-pdfs:
+    enabled: ${RENDER_TICKET_PDFS_ENABLED:false}
+    interval-seconds: ${RENDER_TICKET_PDFS_EVERY:30}
+    batch-size: ${RENDER_TICKET_PDFS_BATCH_SIZE:20}
+    run-timeout-seconds: ${RENDER_TICKET_PDFS_RUN_TIMEOUT:60}
+  # Publishes the concessions outbox (ADR-019, ADR-045) with the login and broker above. Off until the consumers exist.
+  # Only the listed event types are published: Ticketing is the one consumer, of ConcessionOrderConfirmed.
+  concessions-outbox-relay:
+    enabled: ${CONCESSIONS_OUTBOX_RELAY_ENABLED:false}
+    interval-seconds: ${CONCESSIONS_OUTBOX_RELAY_EVERY:5}
+    event-types: ${CONCESSIONS_OUTBOX_RELAY_EVENT_TYPES:ConcessionOrderConfirmed}
+
+  ticketing-outbox-relay:
+    enabled: ${TICKETING_OUTBOX_RELAY_ENABLED:false}
+    interval-seconds: ${TICKETING_OUTBOX_RELAY_EVERY:5}
+    event-types: ${TICKETING_OUTBOX_RELAY_EVENT_TYPES:TicketIssued}
 
 booking:
   api:
     url: ${BOOKING_API_URL:http://booking-api:8083/api/v1/booking}
+    timeout-seconds: 10
+
+auth:
+  api:
+    url: ${AUTH_API_URL:http://auth-api:8081/api/v1/auth}
+    timeout-seconds: 10
+
+concessions:
+  api:
+    url: ${CONCESSIONS_API_URL:http://concessions-api:8085/api/v1/concessions}
+    timeout-seconds: 10
+
+# The private bucket of the ticket PDFs, written with the writer account (ADR-058).
+object-storage:
+  url: ${PDF_STORAGE_URL:http://rustfs:9000}
+  access-key: ${PDF_STORAGE_ACCESS_KEY:}
+  secret-key: ${PDF_STORAGE_SECRET_KEY:}
+  bucket: ${PDF_STORAGE_BUCKET:tickets}
+  # Given to the client so that it never asks for the location of the bucket, which the writer account may not do.
+  region: ${PDF_STORAGE_REGION:us-east-1}
+
+# The internal routes of Ticketing start at the root of the service, not under /api/v1/ticketing.
+ticketing:
+  api:
+    url: ${TICKETING_API_URL:http://ticketing-api:8084}
     timeout-seconds: 10
 
 logging:

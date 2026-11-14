@@ -5,7 +5,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.stereotype.Component;
 
 /**
@@ -13,10 +13,14 @@ import org.springframework.stereotype.Component;
  * sweep and not once at startup: with {@code SERVICE_TOKEN_FILE} the file is read again each time,
  * which lets the platform rotate the secret without restarting the worker; with
  * {@code SERVICE_TOKEN} the value is fixed for the life of the process. One of the two is required,
- * and the worker refuses to start without a token (Norma 5.7.4).
+ * and the worker refuses to start without a token (Norma 5.7.4). It exists only while a job that calls
+ * another service is on ({@code expire-holds}, {@code purge-auth}, {@code concessions-reservation-events}, {@code expire-concessions-orders}, {@code dispatch-ticket-emails} or {@code render-ticket-pdfs}).
  */
 @Component
-@ConditionalOnProperty(prefix = "worker.expire-holds", name = "enabled", havingValue = "true", matchIfMissing = true)
+@ConditionalOnExpression("${worker.expire-holds.enabled:true} or ${worker.purge-auth.enabled:false}"
+        + " or ${worker.concessions-reservation-events.enabled:false} or ${worker.expire-concessions-orders.enabled:false}"
+        + " or ${worker.dispatch-ticket-emails.enabled:false} or ${worker.hold-expiry-warnings.enabled:false}"
+        + " or ${worker.render-ticket-pdfs.enabled:false}")
 public class ServiceTokenSource {
 
     private final String fixedToken;
@@ -35,7 +39,7 @@ public class ServiceTokenSource {
         String token = tokenFile == null ? fixedToken : readFile();
         if (token.isBlank()) {
             throw new IllegalStateException(
-                    "SERVICE_TOKEN or SERVICE_TOKEN_FILE is required: the booking service rejects an unauthenticated sweep");
+                    "SERVICE_TOKEN or SERVICE_TOKEN_FILE is required: the services the worker calls reject an unauthenticated request");
         }
         return token;
     }

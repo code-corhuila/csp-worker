@@ -8,7 +8,7 @@ import org.springframework.context.event.EventListener;
 
 /**
  * The csp-worker application: runs scheduled background jobs (Norma 4.3). It exposes no business
- * interface; Norma 5.7.1 admits at most a health endpoint, which is not implemented yet.
+ * interface; Norma 5.7.1 admits only a health endpoint, which is the only HTTP point it has.
  */
 // The adapters live beside the application, not under it: both are scanned on purpose.
 @SpringBootApplication(scanBasePackages = {
